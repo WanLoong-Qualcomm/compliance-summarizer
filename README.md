@@ -6,88 +6,130 @@ environment is required.
 
 ## Setup
 
-Install or update the locked application and test dependencies:
+Install the locked application and test dependencies:
 
 ```powershell
 uv sync --dev
 ```
 
-The supported Python version is Python 3.12 or newer. `uv` supplies the
-environment and resolves the interpreter when needed.
+The supported Python version is Python 3.12 or newer.
 
-## Run the application
+## Run the command-line application
 
-Start the command-line application with:
+Start the command-line entry point with:
 
 ```powershell
 uv run compliance-summarizer
 ```
 
-The current command is the execution baseline. Workbook ingestion and report
-generation are added by later implementation tasks.
+On the first run, the command creates `settings.json` and never overwrites an
+existing settings file. Complete the file and press Enter when prompted. On
+later runs, the existing file is loaded and validated after the same pause.
 
-On the first run, the command creates a `settings.json` template. Existing
-settings are never overwritten. Complete these fields before continuing:
-workbook path, sheet name, supported test (`GAIN`), GAIN variation, global
-background, selected pivot, and `bypass_model: true`. The command pauses after
-creating or locating the file; press Enter after completing the settings.
+After the settings are loaded, the command discovers the worksheet schema,
+asks for background information for each discovered pivot, performs the
+negative-GAIN confirmation when needed, calculates the deterministic v0.1
+analysis, and writes `compliance-summary.html` in the current directory.
+The report is not overwritten automatically; move or remove an existing
+report before rerunning.
 
-Workbook loading supports `.xlsx` and `.xlsm` files in read-only mode. Macros
-are not executed, and the source workbook is not saved or modified.
+The settings template contains these fields:
 
-Sheet schema discovery reads semantic headers from rows 2–4, discovers pivots
-without hard-coded reference names, and reports blocking structural findings
-before row parsing begins.
+| Field | v0.1 value or behavior |
+| --- | --- |
+| `excel_file_path` | Existing `.xlsx` or `.xlsm` workbook path. |
+| `compliance_sheet_name` | Exact worksheet name; default `Combined`. |
+| `tests_to_report` | Exactly `GAIN`; no other test is supported. |
+| `acceptable_variation.GAIN` | Finite nonnegative threshold; default `0.2`. |
+| `background_information` | Optional global background text. |
+| `pivot_field_of_interest` | Exact discovered pivot name. |
+| `bypass_model` | Must be `true` in v0.1. |
 
-Parsed rows retain original worksheet numbers and raw source values. Blank
+## Workbook assumptions
+
+Workbook loading accepts `.xlsx` and `.xlsm` files in read-only mode. Macros
+are never executed, the source workbook is never saved, and formulas are read
+from cached values when available.
+
+Schema discovery reads semantic headers from rows 2, 3, and 4, with data
+starting at row 5. It discovers pivot fields and their `MIN`, `MAX`,
+`NN_25C AVG`, and `wcMargin` statistics without hard-coded pivot names. The
+required fixed fields are:
+
+`LNAMODE`, `CAMODE`, `STD`, `BAND`, `MEASPORT`, `DLP`, `DIV`, `TESTNAME`,
+`GAINMODE`, `BBPATH`, `FREQ`, `CHANNEL`, `Result?`, `LL`, and `UL`.
+
+`BW` and `F0_MHZ` are optional context fields. Additional trailing workbook
+columns are reported as unknown diagnostics and are not used in calculations.
+
+## Validation and missing data
+
+The negative-GAIN check scans every exact normalized `GAIN` row and every
+discovered pivot `MIN`. Numeric negative values are shown with worksheet and
+signal-path context and require an explicit full-word `yes` or `no` decision.
+Blank, zero, nonnumeric, and non-GAIN values do not trigger the prompt. EOF,
+interruptions, or rejection abort safely before analysis and report generation.
+
+Parsed rows retain original worksheet row numbers and raw source values. Blank
 pivot cells remain unavailable, numeric zero remains zero, and invalid numeric
-text is reported without coercion.
+text is not coerced. Missing values are excluded only from calculations that
+require them and are reported through warnings and exclusion counts.
 
-Content validation keeps invalid GAIN rows out of affected calculations,
-maintains separate comparison denominators for missing pivots, and blocks only
-when required selected-pivot analysis has no usable inputs.
+The source `Result?` value remains separate from derived pivot status. GAIN
+failure rates use only numeric `wcMargin` values and expose their numerator and
+denominator. Pairwise GAIN comparisons use signed selected-minus-comparison
+`NN_25C AVG` deltas; threshold boundaries are neutral, and unavailable
+operands do not enter denominators.
 
-Before analysis, the negative-GAIN check scans every exact GAIN row and every
-discovered pivot MIN. Numeric negative values are shown with worksheet and
-signal-path context and require an explicit `yes` or `no` continuation choice;
-blank, zero, nonnumeric, and non-GAIN values do not trigger the prompt.
+## Deterministic report output
 
-The dataset summary then retains only exact normalized `GAIN` rows and keeps
-PASS, FAIL, and invalid-result counts separate from non-GAIN tests.
+The report renderer accepts a complete deterministic analysis result:
 
-Per-pivot failure rates use only numeric `wcMargin` values. Missing or
-nonnumeric margins are reported as unavailable and are not counted as passes;
-each rate retains its failure numerator and numeric denominator.
+```python
+from compliance_summarizer.report import write_html_report
 
-Pairwise GAIN comparisons subtract each comparison pivot's `NN_25C AVG` from
-the selected pivot's value. Inclusive variation-threshold boundaries are
-neutral, and missing or nonnumeric operands remain unavailable.
+write_html_report(analysis, "compliance-summary.html")
+```
 
-Failure analysis ranks source `FAIL` cases by selected-pivot `wcMargin`, using
-worksheet row number as the deterministic tie-breaker. It retains the top 50
-and worst five while tracking FAIL cases whose selected margin is unavailable.
+`write_html_report` writes `compliance-summary.html` atomically by default and
+does not overwrite an existing report unless `overwrite=True` is supplied.
+The generated HTML embeds its CSS, top-50 failure image, and accessible HTML
+tables; it does not reference local assets or network resources. The report
+contains the fixed 14-section order, validation warnings, GAIN counts,
+failure/pass analysis, pairwise comparisons, degradation-led candidates, and
+the model-bypass statement.
 
-Pass analysis retains the five smallest strictly positive selected-pivot
-margins, keeps pairwise context attached, and reports exact-zero PASS margins
-as a separate boundary count.
+Reference-workbook validation is reproducible with:
 
-Overall pairwise comparisons use only rows with both numeric averages for each
-denominator. They retain signed extrema, pivot-specific failure summaries, and
-degradation-led failure candidates without converting unavailable values to
-zero.
+```powershell
+uv run --group dev pytest tests/test_reference_integration.py -q
+```
 
-The model stage is explicit and deterministic in v0.1: `AI generation is
-bypassed in v0.1.` No provider credentials, client, or network access is used.
+The supplied `REFERENCE.xlsm` `Combined` sheet validates to 4,256 GAIN rows:
+4,160 PASS and 96 FAIL. The known 896 rows missing `GF-PROTO` and `GF-QMOM`
+values remain unavailable for affected comparisons rather than becoming zero.
+
+## v0.1 limitations
+
+Version 0.1 supports only RX SIGPATH GAIN characterization at the NN split
+represented by `NN_25C AVG`. It excludes:
+
+- Graphical or web UI features.
+- AI-generated prose and external model-provider calls.
+- Gain-DNL, SSNF, linearity, S11, and non-GAIN tests.
+- Temperatures or splits other than the represented NN/25C data.
+- Editing workbooks or executing VBA macros.
+- Automatic repair of malformed worksheets.
 
 ## Run tests
 
-Run the focused CLI smoke test:
+Run the focused CLI tests:
 
 ```powershell
 uv run --group dev pytest tests/test_cli.py
 ```
 
-Run the complete test suite:
+Run the complete suite:
 
 ```powershell
 uv run --group dev pytest
