@@ -42,6 +42,17 @@ Parsed rows retain original worksheet numbers and raw source values. Blank
 pivot cells remain unavailable, numeric zero remains zero, and invalid numeric
 text is reported without coercion.
 
+Content validation keeps invalid GAIN rows out of affected calculations,
+maintains separate comparison denominators for missing pivots, and blocks only
+when required selected-pivot analysis has no usable inputs.
+
+The dataset summary then retains only exact normalized `GAIN` rows and keeps
+PASS, FAIL, and invalid-result counts separate from non-GAIN tests.
+
+Per-pivot failure rates use only numeric `wcMargin` values. Missing or
+nonnumeric margins are reported as unavailable and are not counted as passes;
+each rate retains its failure numerator and numeric denominator.
+
 ## Run tests
 
 Run the focused CLI smoke test:

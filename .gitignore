@@ -1,3 +1,4 @@
 .env
 *.xlsm
 *.xlsx
+__pycache__/

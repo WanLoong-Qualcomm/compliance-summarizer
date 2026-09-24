@@ -10,10 +10,8 @@ from .contracts import (
     FindingSeverity,
     ParsedCase,
     PivotSchema,
-    REQUIRED_FIXED_HEADERS,
     REQUIRED_PIVOT_STATISTICS,
     SheetSchema,
-    SourceResult,
     ValidationFinding,
     normalize_source_result,
 )
