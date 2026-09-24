@@ -1,0 +1,25 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "compliance-summarizer"
+version = "0.1.0"
+description = "Deterministic compliance summaries for RX SIGPATH characterization data."
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "openpyxl>=3.1.5,<4",
+    "pillow>=11,<13",
+]
+
+[project.scripts]
+compliance-summarizer = "compliance_summarizer.cli:main"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3,<9",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/compliance_summarizer"]
