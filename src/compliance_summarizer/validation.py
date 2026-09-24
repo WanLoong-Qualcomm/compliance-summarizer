@@ -8,12 +8,95 @@ from typing import Mapping
 
 from .contracts import (
     FindingSeverity,
+    NegativeGainDecision,
     ParsedCase,
     SheetSchema,
     SourceResult,
     ValidationFinding,
 )
+from .prompts import InputFunction, OutputFunction, prompt_negative_gain_decision
 from .rows import RowParsingResult
+
+
+@dataclass(frozen=True, slots=True)
+class NegativeGainFinding:
+    """One numeric negative GAIN ``MIN`` with traceable context."""
+
+    worksheet_row_number: int
+    pivot_name: str
+    minimum: float
+    context: Mapping[str, object]
+
+    def __post_init__(self) -> None:
+        if type(self.worksheet_row_number) is not int or self.worksheet_row_number < 5:
+            raise ValueError("worksheet_row_number must be a data row number")
+        if not self.pivot_name.strip():
+            raise ValueError("pivot_name must be nonempty")
+        if not _is_finite_number(self.minimum) or self.minimum >= 0:
+            raise ValueError("minimum must be a finite negative number")
+        context = dict(self.context)
+        if any(not isinstance(name, str) or not name for name in context):
+            raise TypeError("context keys must be nonempty strings")
+        object.__setattr__(self, "context", context)
+
+    @property
+    def validation_finding(self) -> ValidationFinding:
+        """Return the shared warning representation used by the report contract."""
+
+        return ValidationFinding(
+            code="negative_gain_min",
+            message=(
+                f"GAIN row has numeric negative MIN {self.minimum} for pivot "
+                f"'{self.pivot_name}'."
+            ),
+            severity=FindingSeverity.WARNING,
+            blocking=False,
+            worksheet_row_number=self.worksheet_row_number,
+            field_name="MIN",
+            pivot_name=self.pivot_name,
+            count=1,
+            sample_rows=(self.worksheet_row_number,),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class NegativeGainCheckResult:
+    """Negative-GAIN findings and the user's continuation decision."""
+
+    findings: tuple[NegativeGainFinding, ...]
+    decision: NegativeGainDecision
+    validation_findings: tuple[ValidationFinding, ...] = ()
+
+    def __post_init__(self) -> None:
+        findings = tuple(self.findings)
+        if any(not isinstance(finding, NegativeGainFinding) for finding in findings):
+            raise TypeError("findings must contain NegativeGainFinding instances")
+        validation_findings = tuple(self.validation_findings)
+        if any(
+            not isinstance(finding, ValidationFinding)
+            for finding in validation_findings
+        ):
+            raise TypeError("validation_findings must contain ValidationFinding instances")
+        expected = tuple(finding.validation_finding for finding in findings)
+        if validation_findings != expected:
+            raise ValueError("validation_findings must match findings")
+        if type(self.decision) is not NegativeGainDecision:
+            raise TypeError("decision must be NegativeGainDecision")
+        if not findings and self.decision is not NegativeGainDecision.NOT_REQUIRED:
+            raise ValueError("no findings require a NOT_REQUIRED decision")
+        if findings and self.decision is NegativeGainDecision.NOT_REQUIRED:
+            raise ValueError("findings require an explicit continuation decision")
+        object.__setattr__(self, "findings", findings)
+        object.__setattr__(self, "validation_findings", validation_findings)
+
+    @property
+    def should_continue(self) -> bool:
+        """Whether the caller may continue to analytics and report generation."""
+
+        return self.decision in {
+            NegativeGainDecision.NOT_REQUIRED,
+            NegativeGainDecision.PROCEED,
+        }
 
 
 @dataclass(frozen=True, slots=True)
@@ -74,6 +157,98 @@ class ContentValidationResult:
     @property
     def blocking_findings(self) -> tuple[ValidationFinding, ...]:
         return tuple(finding for finding in self.findings if finding.blocking)
+
+
+def detect_negative_gain_minima(
+    parsed: RowParsingResult,
+    schema: SheetSchema,
+) -> tuple[NegativeGainFinding, ...]:
+    """Find every numeric negative pivot ``MIN`` on an exact GAIN row."""
+
+    if not isinstance(parsed, RowParsingResult):
+        raise TypeError("parsed must be RowParsingResult")
+    if not isinstance(schema, SheetSchema):
+        raise TypeError("schema must be SheetSchema")
+
+    findings: list[NegativeGainFinding] = []
+    context_headers = _ordered_context_headers(schema)
+    for case in parsed.cases:
+        if case.fixed_values.get("TESTNAME") != "GAIN":
+            continue
+        context = {
+            header: _case_value(case, header)
+            for header in context_headers
+        }
+        for pivot in schema.pivots:
+            minimum = case.pivot_values.get(pivot.name, {}).get("MIN")
+            if not _is_finite_number(minimum) or minimum >= 0:
+                continue
+            findings.append(
+                NegativeGainFinding(
+                    worksheet_row_number=case.worksheet_row_number,
+                    pivot_name=pivot.name,
+                    minimum=float(minimum),
+                    context=context,
+                )
+            )
+    return tuple(findings)
+
+
+def format_negative_gain_findings(
+    findings: tuple[NegativeGainFinding, ...],
+) -> tuple[str, ...]:
+    """Format negative-GAIN findings as deterministic CLI table lines."""
+
+    findings = tuple(findings)
+    if any(not isinstance(finding, NegativeGainFinding) for finding in findings):
+        raise TypeError("findings must contain NegativeGainFinding instances")
+    if not findings:
+        return ("Negative-GAIN check passed: no numeric negative MIN values found.",)
+
+    context_headers = tuple(findings[0].context)
+    header = ("Worksheet row", "Pivot field", "MIN", *context_headers)
+    lines = [" | ".join(header)]
+    for finding in findings:
+        values = (
+            str(finding.worksheet_row_number),
+            finding.pivot_name,
+            str(finding.minimum),
+            *("N/A" if value is None else str(value) for value in finding.context.values()),
+        )
+        lines.append(" | ".join(values))
+    return tuple(lines)
+
+
+def run_negative_gain_check(
+    parsed: RowParsingResult,
+    schema: SheetSchema,
+    *,
+    input_fn: InputFunction | None = None,
+    output_fn: OutputFunction | None = None,
+) -> NegativeGainCheckResult:
+    """Detect negative GAIN minima, display them, and request confirmation."""
+
+    findings = detect_negative_gain_minima(parsed, schema)
+    for line in format_negative_gain_findings(findings):
+        _write_output(output_fn, line)
+
+    if not findings:
+        decision = NegativeGainDecision.NOT_REQUIRED
+    else:
+        decision = prompt_negative_gain_decision(
+            input_fn=input_fn,
+            output_fn=output_fn,
+        )
+        if decision is NegativeGainDecision.ABORT:
+            _write_output(
+                output_fn,
+                "Negative-GAIN check rejected; analytics and report generation must stop.",
+            )
+    return NegativeGainCheckResult(
+        findings=findings,
+        decision=decision,
+        validation_findings=tuple(finding.validation_finding for finding in findings),
+    )
 
 
 @dataclass(slots=True)
@@ -372,3 +547,22 @@ def _add_blocking(
             blocking=True,
         )
     accumulators[key].add()
+
+
+def _ordered_context_headers(schema: SheetSchema) -> tuple[str, ...]:
+    columns = (
+        *schema.fixed_columns.items(),
+        *schema.optional_columns.items(),
+    )
+    return tuple(name for name, _ in sorted(columns, key=lambda item: item[1]))
+
+
+def _case_value(case: ParsedCase, header: str) -> object:
+    if header in case.source_values:
+        return case.source_values[header]
+    return case.fixed_values.get(header)
+
+
+def _write_output(output_fn: OutputFunction | None, message: str) -> None:
+    writer = print if output_fn is None else output_fn
+    writer(message)

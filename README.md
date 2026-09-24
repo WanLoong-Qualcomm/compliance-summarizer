@@ -27,9 +27,10 @@ The current command is the execution baseline. Workbook ingestion and report
 generation are added by later implementation tasks.
 
 On the first run, the command creates a `settings.json` template. Existing
-settings are never overwritten. Complete these fields before a later workflow
-run: workbook path, sheet name, supported test (`GAIN`), GAIN variation, global
-background, selected pivot, and `bypass_model: true`.
+settings are never overwritten. Complete these fields before continuing:
+workbook path, sheet name, supported test (`GAIN`), GAIN variation, global
+background, selected pivot, and `bypass_model: true`. The command pauses after
+creating or locating the file; press Enter after completing the settings.
 
 Workbook loading supports `.xlsx` and `.xlsm` files in read-only mode. Macros
 are not executed, and the source workbook is not saved or modified.
@@ -46,12 +47,37 @@ Content validation keeps invalid GAIN rows out of affected calculations,
 maintains separate comparison denominators for missing pivots, and blocks only
 when required selected-pivot analysis has no usable inputs.
 
+Before analysis, the negative-GAIN check scans every exact GAIN row and every
+discovered pivot MIN. Numeric negative values are shown with worksheet and
+signal-path context and require an explicit `yes` or `no` continuation choice;
+blank, zero, nonnumeric, and non-GAIN values do not trigger the prompt.
+
 The dataset summary then retains only exact normalized `GAIN` rows and keeps
 PASS, FAIL, and invalid-result counts separate from non-GAIN tests.
 
 Per-pivot failure rates use only numeric `wcMargin` values. Missing or
 nonnumeric margins are reported as unavailable and are not counted as passes;
 each rate retains its failure numerator and numeric denominator.
+
+Pairwise GAIN comparisons subtract each comparison pivot's `NN_25C AVG` from
+the selected pivot's value. Inclusive variation-threshold boundaries are
+neutral, and missing or nonnumeric operands remain unavailable.
+
+Failure analysis ranks source `FAIL` cases by selected-pivot `wcMargin`, using
+worksheet row number as the deterministic tie-breaker. It retains the top 50
+and worst five while tracking FAIL cases whose selected margin is unavailable.
+
+Pass analysis retains the five smallest strictly positive selected-pivot
+margins, keeps pairwise context attached, and reports exact-zero PASS margins
+as a separate boundary count.
+
+Overall pairwise comparisons use only rows with both numeric averages for each
+denominator. They retain signed extrema, pivot-specific failure summaries, and
+degradation-led failure candidates without converting unavailable values to
+zero.
+
+The model stage is explicit and deterministic in v0.1: `AI generation is
+bypassed in v0.1.` No provider credentials, client, or network access is used.
 
 ## Run tests
 

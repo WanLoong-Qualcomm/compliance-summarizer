@@ -37,11 +37,14 @@ def create_schema_workbook(
     duplicate_fixed_header: bool = False,
     trailing_columns: bool = False,
     data_row: bool = True,
+    include_optional_columns: bool = True,
 ) -> None:
     workbook = openpyxl.Workbook()
     worksheet = workbook.active
     worksheet.title = "Combined"
     for column, header in enumerate(FIXED_HEADERS, start=1):
+        if not include_optional_columns and header in {"BW", "F0_MHZ"}:
+            continue
         worksheet.cell(row=4, column=column, value=header)
 
     pivot_names = ("GF-PROTO", "GF-QMOM", "SEC-DR5")
@@ -117,6 +120,26 @@ def test_unmerged_equivalent_headers_are_discovered(tmp_path):
     assert result.is_valid
     assert result.schema is not None
     assert result.schema.pivot_names == ("GF-PROTO", "GF-QMOM", "SEC-DR5")
+
+
+def test_optional_context_columns_may_be_absent_without_blocking_schema(tmp_path):
+    workbook_path = tmp_path / "without_optional_context.xlsx"
+    create_schema_workbook(
+        workbook_path,
+        merged=False,
+        include_optional_columns=False,
+    )
+
+    result = discover(workbook_path)
+
+    assert result.is_valid
+    assert result.schema is not None
+    assert result.schema.optional_columns == {}
+    assert [
+        finding.field_name
+        for finding in result.findings
+        if finding.code == "missing_optional_column"
+    ] == ["BW", "F0_MHZ"]
 
 
 def test_missing_statistic_blocks_schema(tmp_path):
