@@ -1,0 +1,16 @@
+{
+  "excel_file_path": "./REFERENCE.xlsm",
+  "compliance_sheet_name": "Combined",
+  "test": "SIGPATH",
+  "measurements": [
+    "GAIN"
+  ],
+  "acceptable_variation": {
+    "GAIN": 0.2
+  },
+  "background_information": "",
+  "main_pivot": "DUT-1_VAR1",
+  "group_by": [],
+  "aggregate_port_groups": false,
+  "bypass_model": true
+}

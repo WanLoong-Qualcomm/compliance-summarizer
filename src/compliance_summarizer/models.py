@@ -1,0 +1,128 @@
+"""Typed intermediate representations shared by the v0.1 pipeline."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any
+
+
+@dataclass(frozen=True, slots=True)
+class Settings:
+    excel_file_path: Path
+    compliance_sheet_name: str
+    test: str
+    measurements: tuple[str, ...]
+    acceptable_variation: dict[str, float]
+    background_information: str
+    main_pivot: str
+    group_by: tuple[str, ...]
+    aggregate_port_groups: bool
+    bypass_model: bool
+
+
+@dataclass(frozen=True, slots=True)
+class PivotSchema:
+    name: str
+    statistics: dict[str, int]
+
+
+@dataclass(frozen=True, slots=True)
+class SheetSchema:
+    name: str
+    fixed_columns: dict[str, int]
+    pivots: tuple[PivotSchema, ...]
+    data_start_row: int = 5
+
+    @property
+    def pivot_names(self) -> tuple[str, ...]:
+        return tuple(pivot.name for pivot in self.pivots)
+
+
+@dataclass(frozen=True, slots=True)
+class ComplianceCase:
+    worksheet_row: int
+    identity: tuple[tuple[str, Any], ...]
+    fixed_values: dict[str, Any]
+    pivot_values: dict[str, dict[str, float | None]]
+    pivot_raw_values: dict[str, dict[str, Any]]
+
+
+@dataclass(frozen=True, slots=True)
+class CoverageSummary:
+    pivot: str
+    rows_with_gaps: int
+    gaps_by_field: dict[str, int]
+    malformed_by_field: dict[str, int]
+
+
+@dataclass(frozen=True, slots=True)
+class ParsedMeasurement:
+    schema: SheetSchema
+    measurement: str
+    cases: tuple[ComplianceCase, ...]
+    coverage: tuple[CoverageSummary, ...]
+    warnings: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class Rate:
+    numerator: int
+    denominator: int
+
+    @property
+    def percentage(self) -> float | None:
+        if self.denominator == 0:
+            return None
+        return self.numerator / self.denominator * 100.0
+
+
+@dataclass(frozen=True, slots=True)
+class PivotMainStatistics:
+    pivot: str
+    failure_rate: Rate
+    invalid_margin_count: int
+    worst_wc_margin: float | None
+    worst_failure_path: tuple[tuple[str, Any], ...] | None
+
+
+@dataclass(frozen=True, slots=True)
+class FailureCaseStatistics:
+    case: ComplianceCase
+    main_wc_margin: float
+    comparison_values: dict[str, float | None]
+    deltas: dict[str, float | None]
+
+
+@dataclass(frozen=True, slots=True)
+class ComparisonStatistics:
+    comparison_pivot: str
+    paired_count: int
+    main_only_count: int
+    degradation_rate: Rate
+    unchanged_rate: Rate
+    improvement_rate: Rate
+    maximum_degradation: float | None
+    maximum_improvement: float | None
+    average_degradation_on_main_failures: float | None
+    degraded_main_failure_count: int
+
+
+@dataclass(frozen=True, slots=True)
+class MeasurementStatistics:
+    measurement: str
+    main_pivot: str
+    acceptable_variation: float
+    case_count: int
+    pivot_statistics: tuple[PivotMainStatistics, ...]
+    comparisons: tuple[ComparisonStatistics, ...]
+    top_failure_cases: tuple[FailureCaseStatistics, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class AnalysisResult:
+    settings: Settings
+    parsed: ParsedMeasurement
+    statistics: MeasurementStatistics
+    generated_at: str
+    notes: tuple[str, ...] = field(default_factory=tuple)
