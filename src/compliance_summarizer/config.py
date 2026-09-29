@@ -1,4 +1,4 @@
-"""Load and validate the v0.1 ``settings.json`` contract."""
+"""Load and validate the v0.2 ``settings.json`` contract."""
 
 from __future__ import annotations
 
@@ -10,6 +10,7 @@ from pathlib import Path
 
 from .errors import ConfigurationError
 from .models import Settings
+from .workbook import IDENTIFYING_HEADERS
 
 
 DEFAULT_SETTINGS: dict[str, object] = {
@@ -78,7 +79,7 @@ def load_settings(path: str | Path = "settings.json") -> Settings:
     extra = tuple(sorted(set(payload) - set(DEFAULT_SETTINGS)))
     if extra:
         raise ConfigurationError(
-            "Unsupported v0.1 settings field(s): " + ", ".join(extra) + "."
+            "Unsupported v0.2 settings field(s): " + ", ".join(extra) + "."
         )
 
     workbook_text = _nonempty_string(payload["excel_file_path"], "excel_file_path")
@@ -98,16 +99,16 @@ def load_settings(path: str | Path = "settings.json") -> Settings:
     sheet = _nonempty_string(payload["compliance_sheet_name"], "compliance_sheet_name")
     test = _nonempty_string(payload["test"], "test").upper()
     if test != "SIGPATH":
-        raise ConfigurationError("v0.1 supports only test 'SIGPATH'.")
+        raise ConfigurationError("v0.2 supports only test 'SIGPATH'.")
 
     measurements_value = payload["measurements"]
     if type(measurements_value) is not list or measurements_value != ["GAIN"]:
-        raise ConfigurationError("v0.1 'measurements' must be exactly ['GAIN'].")
+        raise ConfigurationError("v0.2 'measurements' must be exactly ['GAIN'].")
 
     variation_value = payload["acceptable_variation"]
     if type(variation_value) is not dict or set(variation_value) != {"GAIN"}:
         raise ConfigurationError(
-            "'acceptable_variation' must contain exactly a GAIN value in v0.1."
+            "'acceptable_variation' must contain exactly a GAIN value in v0.2."
         )
     gain_variation = variation_value["GAIN"]
     if (
@@ -128,19 +129,33 @@ def load_settings(path: str | Path = "settings.json") -> Settings:
     group_by = payload["group_by"]
     if type(group_by) is not list or any(not isinstance(item, str) for item in group_by):
         raise ConfigurationError("'group_by' must be a JSON list of strings.")
-    if group_by:
-        raise ConfigurationError("'group_by' must be empty because v0.1 has no aggregation.")
+    normalized_group_by: list[str] = []
+    allowed_group_fields = ", ".join(IDENTIFYING_HEADERS)
+    for item in group_by:
+        field = item.strip().upper()
+        if not field:
+            raise ConfigurationError("'group_by' cannot contain blank field names.")
+        if field not in IDENTIFYING_HEADERS:
+            raise ConfigurationError(
+                f"Unsupported 'group_by' field '{item}'. Allowed fields: "
+                f"{allowed_group_fields}."
+            )
+        if field in normalized_group_by:
+            raise ConfigurationError(
+                f"'group_by' contains duplicate field '{field}'."
+            )
+        normalized_group_by.append(field)
 
     aggregate = payload["aggregate_port_groups"]
     if type(aggregate) is not bool:
         raise ConfigurationError("'aggregate_port_groups' must be a boolean.")
     if aggregate:
         raise ConfigurationError(
-            "'aggregate_port_groups' must be false because v0.1 has no aggregation."
+            "'aggregate_port_groups' must be false; use 'group_by' for grouped analysis."
         )
     bypass = payload["bypass_model"]
     if bypass is not True:
-        raise ConfigurationError("'bypass_model' must be true in v0.1.")
+        raise ConfigurationError("'bypass_model' must be true in v0.2.")
 
     return Settings(
         excel_file_path=workbook_path,
@@ -150,7 +165,7 @@ def load_settings(path: str | Path = "settings.json") -> Settings:
         acceptable_variation={"GAIN": float(gain_variation)},
         background_information=background,
         main_pivot=main_pivot,
-        group_by=(),
+        group_by=tuple(normalized_group_by),
         aggregate_port_groups=False,
         bypass_model=True,
     )

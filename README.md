@@ -1,6 +1,6 @@
 # Compliance Summarizer
 
-Compliance Summarizer v0.1 reads a SIGPATH compliance workbook, calculates
+Compliance Summarizer v0.2 reads a SIGPATH compliance workbook, calculates
 deterministic GAIN compliance statistics, and creates a standalone HTML report.
 Pass/fail calculations use `wcMargin`; the workbook's `Result?` field is shown
 only as source context.
@@ -42,7 +42,7 @@ uv run compliance-summarizer --settings .\settings.json `
   --output .\reports\summary.html --overwrite
 ```
 
-The v0.1 settings fields are:
+The current settings fields are:
 
 | Field | Requirement |
 | --- | --- |
@@ -53,9 +53,9 @@ The v0.1 settings fields are:
 | `acceptable_variation` | Must contain one finite, non-negative `GAIN` value. |
 | `background_information` | Optional report context string. |
 | `main_pivot` | Exact pivot name discovered in row 2. |
-| `group_by` | Must be empty in v0.1. |
-| `aggregate_port_groups` | Must be `false` in v0.1. |
-| `bypass_model` | Must be `true` in v0.1. |
+| `group_by` | Optional identifying/compliance columns used for grouped analysis. Empty preserves the overall-only report. |
+| `aggregate_port_groups` | Must be `false`; use `group_by` for grouped analysis. |
+| `bypass_model` | Must be `true` in the current scope. |
 
 See `settings.example.json` for a complete example.
 
@@ -84,12 +84,18 @@ The report is a standalone HTML file with these sections:
 - coverage and validation warnings;
 - per-pivot compliance statistics based on `wcMargin`;
 - main-pivot comparisons using signed degradation and improvement values;
-- an Excel-style top-20 main-pivot failure table; and
+- an Excel-style top-20 main-pivot failure table;
+- grouped per-pivot statistics and comparisons when `group_by` is non-empty; and
 - methodology and assumptions.
+
+Grouped reports use the same compact tables and percentage-only presentation as
+the overall report. They exclude the top-20 failure table. Blank grouping values
+are shown as `(blank)`, and groups without valid main-pivot `wcMargin` values
+are skipped with a validation warning.
 
 Unexpected calculation failures are rendered as bold red `ERROR` text. The
 source `Result?` value is retained for context and is never used for a
-calculation. The v0.1 report contains no external assets or charts.
+calculation. The report contains no external assets or charts.
 
 ## Test
 
@@ -97,5 +103,5 @@ calculation. The v0.1 report contains no external assets or charts.
 uv run pytest
 ```
 
-The current scope excludes aggregation, external model calls, non-GAIN
-measurements, a graphical UI, and workbook modification.
+The current scope excludes external model calls, non-GAIN measurements, a
+graphical UI, and workbook modification.

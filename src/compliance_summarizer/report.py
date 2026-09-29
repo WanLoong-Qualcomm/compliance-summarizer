@@ -10,7 +10,14 @@ from pathlib import Path
 from typing import Iterable, Sequence
 
 from .errors import ReportError
-from .models import CALCULATION_ERROR, AnalysisResult, Rate
+from .grouping import format_group_key
+from .models import (
+    CALCULATION_ERROR,
+    AnalysisResult,
+    GroupedAnalysis,
+    MeasurementStatistics,
+    Rate,
+)
 
 
 def write_html_report(
@@ -64,14 +71,14 @@ def render_html(analysis: AnalysisResult) -> str:
                 "Pivot compliance",
                 '<p class="method">A negative <code>wcMargin</code> is a failure. '
                 "Blank or invalid values are excluded from each pivot's failure-rate calculation.</p>"
-                + _pivot_table(analysis),
+                + _pivot_table(analysis.statistics),
             ),
             _section(
                 f"{stats.main_pivot} comparisons",
                 f'<p class="method"><code>delta = {_escape(stats.main_pivot)} NN_25C AVG − comparison '
                 "NN_25C AVG</code>. For GAIN, negative is degradation and positive is "
                 "improvement. Values within the inclusive tolerance are unchanged.</p>"
-                + _comparison_table(analysis),
+                + _comparison_table(analysis.statistics),
             ),
             _section(
                 f"Top 20 {stats.main_pivot} failures",
@@ -80,6 +87,7 @@ def render_html(analysis: AnalysisResult) -> str:
                 + _top_failure_table(analysis),
             ),
             _section("Methodology and assumptions", _notes(analysis)),
+            _grouped_sections(analysis),
         )
     )
     return f"""<!doctype html>
@@ -160,7 +168,7 @@ def _configuration_table(analysis: AnalysisResult) -> str:
         ("Measurement", ", ".join(settings.measurements)),
         ("Baseline", settings.main_pivot),
         ("GAIN acceptable variation", settings.acceptable_variation["GAIN"]),
-        ("Aggregate port groups", settings.aggregate_port_groups),
+        ("Group by", ", ".join(settings.group_by) or "(none)"),
         ("Model bypass", settings.bypass_model),
         ("Background information", settings.background_information or ""),
     )
@@ -186,7 +194,7 @@ def _coverage(analysis: AnalysisResult) -> str:
         rows,
         "Coverage-gap summary",
     )
-    warnings = analysis.parsed.warnings
+    warnings = (*analysis.parsed.warnings, *analysis.group_warnings)
     if warnings:
         content += "<h3>Warnings</h3><ul>" + "".join(
             f"<li>{_escape(warning)}</li>" for warning in warnings
@@ -196,9 +204,9 @@ def _coverage(analysis: AnalysisResult) -> str:
     return content
 
 
-def _pivot_table(analysis: AnalysisResult) -> str:
+def _pivot_table(stats: MeasurementStatistics) -> str:
     rows = []
-    for item in analysis.statistics.pivot_statistics:
+    for item in stats.pivot_statistics:
         rows.append(
             (
                 item.pivot,
@@ -222,10 +230,10 @@ def _pivot_table(analysis: AnalysisResult) -> str:
     )
 
 
-def _comparison_table(analysis: AnalysisResult) -> str:
-    main_pivot = analysis.statistics.main_pivot
+def _comparison_table(stats: MeasurementStatistics) -> str:
+    main_pivot = stats.main_pivot
     rows = []
-    for item in analysis.statistics.comparisons:
+    for item in stats.comparisons:
         rows.append(
             (
                 item.comparison_pivot,
@@ -252,10 +260,32 @@ def _comparison_table(analysis: AnalysisResult) -> str:
             f"Average degradation on {main_pivot} failures",
         ),
         rows,
-        f"Comparisons anchored on {analysis.statistics.main_pivot}",
+        f"Comparisons anchored on {stats.main_pivot}",
         empty="No comparison pivots were discovered.",
         table_class="excel-summary-table",
     )
+
+
+def _grouped_sections(analysis: AnalysisResult) -> str:
+    return "".join(
+        _grouped_section(grouped)
+        for grouped in analysis.grouped_analyses
+    )
+
+
+def _grouped_section(grouped: GroupedAnalysis) -> str:
+    stats = grouped.statistics
+    group_label = format_group_key(grouped.group_key)
+    content = (
+        '<p class="method">A negative <code>wcMargin</code> is a failure. '
+        "Blank or invalid values are excluded from each pivot's failure-rate calculation.</p>"
+        + _pivot_table(stats)
+        + f'<p class="method"><code>delta = {_escape(stats.main_pivot)} NN_25C AVG âˆ’ comparison '
+        "NN_25C AVG</code>. For GAIN, negative is degradation and positive is "
+        "improvement. Values within the inclusive tolerance are unchanged.</p>"
+        + _comparison_table(stats)
+    )
+    return _section(f"Grouped analysis: {group_label}", content)
 
 
 def _top_failure_table(analysis: AnalysisResult) -> str:

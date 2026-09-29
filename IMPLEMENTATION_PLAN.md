@@ -87,3 +87,42 @@ The following remain intentionally deferred to the next revision:
 - model-backed explanations and a defined AI output contract;
 - additional report formats and optional visualizations; and
 - broader workbook contracts beyond the v0.1 SIGPATH layout.
+
+## v0.2 implementation plan
+
+### Outcome
+
+Enable grouped SIGPATH GAIN analysis by partitioning the normalized measurement
+rows with the configured `group_by` fields, while reusing the v0.1 statistics
+calculator and HTML presentation conventions.
+
+### Workstreams
+
+1. **Configuration and validation**
+   - Accept a non-empty `group_by` list.
+   - Normalize field names and validate them against identifying/compliance
+     dimensions.
+   - Keep `aggregate_port_groups` as a compatibility field without giving it a
+     second grouping meaning.
+2. **Grouping layer**
+   - Build one group for each unique combination of selected field values.
+   - Normalize blank, empty, and whitespace-only values to `(blank)` for group
+     identity and display.
+   - Preserve the existing case objects and pivot pairing behavior inside each
+     group.
+3. **Statistics and result model**
+   - Run the existing v0.1 statistics calculation independently for each valid
+     group.
+   - Skip groups with no valid main-pivot `wcMargin` and return a warning.
+   - Preserve the current overall analysis unchanged.
+4. **HTML report**
+   - Render the overall report first.
+   - Render grouped sections afterward using the existing summary and comparison
+     tables.
+   - Omit only the top-20 failure table from grouped sections.
+   - Reuse the existing warning-list, blank-value, percentage, and `ERROR`
+     conventions without adding denominator or per-group coverage tables.
+5. **Qualification**
+   - Add tests for field validation, composite grouping, blank groups, skipped
+     groups, overall compatibility, grouped comparison results, and report order.
+   - Run the full existing suite and the new v0.2 tests.

@@ -23,8 +23,10 @@ def calculate_measurement_statistics(
     parsed: ParsedMeasurement,
     main_pivot: str,
     acceptable_variation: float,
+    *,
+    include_top_failure_cases: bool = True,
 ) -> MeasurementStatistics:
-    """Calculate all v0.1 statistics without consulting source ``Result?``."""
+    """Calculate deterministic statistics without consulting source ``Result?``."""
 
     definition = get_measurement_definition(parsed.measurement)
     if main_pivot not in parsed.schema.pivot_names:
@@ -51,21 +53,24 @@ def calculate_measurement_statistics(
         if _value(case, main_pivot, definition.margin_statistic) is not None
         and _value(case, main_pivot, definition.margin_statistic) < 0
     )
-    ordered_failures = sorted(
-        main_failures,
-        key=lambda case: (
-            _value(case, main_pivot, definition.margin_statistic),
-            _identity_sort_key(case.identity),
-            case.worksheet_row,
-        ),
-    )
     comparison_names = tuple(
         pivot for pivot in parsed.schema.pivot_names if pivot != main_pivot
     )
-    top_failure_cases = tuple(
-        _failure_case(case, main_pivot, comparison_names, definition)
-        for case in ordered_failures[:20]
-    )
+    if include_top_failure_cases:
+        ordered_failures = sorted(
+            main_failures,
+            key=lambda case: (
+                _value(case, main_pivot, definition.margin_statistic),
+                _identity_sort_key(case.identity),
+                case.worksheet_row,
+            ),
+        )
+        top_failure_cases = tuple(
+            _failure_case(case, main_pivot, comparison_names, definition)
+            for case in ordered_failures[:20]
+        )
+    else:
+        top_failure_cases = ()
     comparisons = tuple(
         _comparison_statistics(
             parsed,

@@ -1,4 +1,4 @@
-"""End-to-end deterministic v0.1 workflow."""
+"""End-to-end deterministic v0.2 workflow."""
 
 from __future__ import annotations
 
@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from .config import load_settings
+from .grouping import calculate_grouped_analyses
 from .models import AnalysisResult
 from .report import write_html_report
 from .statistics import calculate_measurement_statistics
@@ -25,6 +26,12 @@ def analyze(settings_path: str | Path = "settings.json") -> AnalysisResult:
         settings.main_pivot,
         settings.acceptable_variation[measurement],
     )
+    grouped_analyses, group_warnings = calculate_grouped_analyses(
+        parsed,
+        settings.group_by,
+        settings.main_pivot,
+        settings.acceptable_variation[measurement],
+    )
     notes = (
         "AI generation was bypassed; all report conclusions are deterministic.",
         "Source Result? values are displayed as context only and are never used "
@@ -39,6 +46,8 @@ def analyze(settings_path: str | Path = "settings.json") -> AnalysisResult:
         statistics=statistics,
         generated_at=datetime.now(UTC).isoformat(timespec="seconds"),
         notes=notes,
+        grouped_analyses=grouped_analyses,
+        group_warnings=group_warnings,
     )
 
 

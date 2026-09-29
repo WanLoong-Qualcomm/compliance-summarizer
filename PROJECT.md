@@ -27,7 +27,9 @@ The application should combine deterministic calculations with AI-generated expl
 - **Main pivot:** The pivot selected as the baseline for comparison.
 - **Comparison pivot:** Any other pivot compared with the main pivot. The default comparison set includes every other pivot in the selected measurement, including pivots from different DUTs or variants.
 - **Measurement statistics:** Statistics calculated directly from the rows belonging to a measurement.
-- **Aggregate:** A grouped view of measurement rows, for example a port group. Aggregate statistics use the same core metrics as measurement statistics, with explicitly documented exclusions.
+- **Overall analysis:** The v0.1 analysis calculated across all rows for the selected measurement.
+- **Grouped analysis:** An independent analysis calculated for the rows sharing one unique combination of the configured `group_by` fields. Grouped analysis reuses the v0.1 calculation rules with the explicitly documented grouped-report exclusions.
+- **Group key:** The values corresponding to the configured `group_by` fields that identify a grouped analysis. Field order affects only label presentation, not group membership. Blank grouping values are represented as `(blank)`.
 - **Coverage gap:** A row or field for which a pivot has no usable value while another relevant pivot has a value. A coverage gap is reported to the user and excluded according to the metric-specific rules below; it is not itself a compliance failure.
 - **`wcMargin`:** The authoritative compliance margin. A negative value indicates failure; a non-negative value indicates pass, subject to any explicitly configured handling for missing or invalid values.
 - **Acceptable variation:** The configured tolerance used when classifying a comparison as degradation, unchanged, or improvement.
@@ -62,15 +64,16 @@ The workflow is intentionally staged so that validation, calculation, and report
    2. Calculate main statistics independently for every pivot.
    3. Calculate comparison statistics between the main pivot and every other pivot.
    4. Reduce low-level statistics to report-ready key statistics.
-   5. For each configured aggregate:
-      1. Filter the rows to the aggregate.
-      2. Calculate main statistics for every pivot.
-      3. Calculate comparison statistics between the main pivot and every other pivot.
-      4. Reduce low-level statistics to report-ready key statistics.
-   6. Reserve aggregate-centric charts for a later version; v0.1 has no chart
-      output.
-   7. Combine the prompt, input/output templates, calculated statistics, and supporting resources.
-   8. Generate the measurement report or summary through the AI client, unless model usage is bypassed.
+   5. When grouped analysis is enabled, partition the measurement rows by each
+      unique combination of the configured `group_by` fields.
+   6. For each group, calculate the same main-pivot and comparison statistics as
+      the measurement analysis, except for the grouped-report exclusions defined
+      below. A group without a valid main-pivot `wcMargin` is skipped after its
+      coverage warning is recorded.
+   7. Reserve group-centric charts for a later version; v0.1 and v0.2 have no
+      chart output.
+   8. Combine the prompt, input/output templates, calculated statistics, and supporting resources.
+   9. Generate the measurement report or summary through the AI client, unless model usage is bypassed.
 
 5. **Generate the overall report**
    - Combine the overall prompt, templates, resources, and per-measurement reports.
@@ -165,26 +168,40 @@ Rates exclude rows without valid paired values. Denominators are retained in the
 structured statistics for traceability, while the HTML report displays rates as
 percentages only. A rate with no valid pairs is blank.
 
-### 6.3 Aggregate statistics
+### 6.3 Grouped analysis statistics
 
-Aggregate main statistics use the same core metrics as measurement main statistics:
+Grouped analysis uses the same core metrics as measurement main statistics:
 
 - failure rate;
 - worst `wcMargin`;
 - main-pivot failure path; and
 - other applicable key statistics.
 
-Aggregate statistics exclude:
+Grouped analysis excludes:
 
 - the top-20 failure-case compliance table; and
-- degraded main-failure count, maximum degradation, and average degradation
-  between the main pivot and comparison pivots.
 
-### 6.4 Aggregate comparison statistics
+### 6.4 Grouped comparison statistics
 
-Aggregate comparison statistics will use exactly the same definitions as
-measurement comparison statistics when aggregation is implemented, including
-acceptable-variation handling, denominators, and coverage-gap treatment.
+Grouped comparison statistics use exactly the same definitions as measurement
+comparison statistics, including acceptable-variation handling and coverage-gap
+treatment. The grouped HTML presentation follows the existing v0.1 report:
+rates are displayed as percentages only, expected unavailable values are blank,
+and unexpected calculation failures are rendered as bold red `ERROR`.
+
+Grouping behavior is defined as follows:
+
+- `group_by: []` produces the existing overall analysis only.
+- A non-empty `group_by` partitions rows by unique combinations of the selected
+  fields. Reordering the selected fields does not change group membership,
+  although report labels may follow the configured field order.
+- Blank, empty, and whitespace-only grouping values are represented by the
+  explicit value `(blank)` and are not discarded.
+- Only identifying/compliance dimensions may be selected. `Result?`, `LL`, and
+  `UL` are not valid grouping fields.
+- A group with no valid main-pivot `wcMargin` values is omitted from grouped
+  statistics and contributes a warning in the existing coverage-and-validation
+  warning list. It does not prevent other groups from being reported.
 
 ### 6.5 Charts
 
@@ -197,7 +214,7 @@ be opened without a separate assets directory.
 
 ## 7. Configuration
 
-`settings.json` is the current v0.1 runtime configuration. Its fields are:
+`settings.json` is the runtime configuration. Its fields are:
 
 - `excel_file_path`: user-selected input workbook path;
 - `compliance_sheet_name`: compliance sheet name;
@@ -206,13 +223,14 @@ be opened without a separate assets directory.
 - `acceptable_variation`: tolerance per measurement;
 - `background_information`: optional context for report generation;
 - `main_pivot`: baseline pivot;
-- `group_by`: optional grouping fields for aggregates;
-- `aggregate_port_groups`: whether port-group aggregation is enabled; and
+- `group_by`: optional identifying/compliance fields for grouped analysis;
+- `aggregate_port_groups`: the v0.1 compatibility field; grouped analysis is
+  controlled by `group_by` in v0.2; and
 - `bypass_model`: whether AI generation is bypassed.
 
 Configuration validation should catch incompatible combinations, such as a configured measurement without an acceptable variation or a main pivot that is not present in the user-selected workbook.
 
-## 8. Current milestone: v0.1
+## 8. v0.1 (Status: Complete)
 
 ### Scope
 
@@ -326,9 +344,66 @@ The original open questions are resolved for v0.1 as follows:
    must define whether the model returns structured data for rendering or
    final prose/markup.
 
-The next revision should decide:
+The next revision will define the grouped-analysis data contract. The remaining
+future decisions are:
 
-- the aggregation and port-group data contract;
 - supported non-GAIN measurement definitions and direction rules;
 - the model provider and structured AI output schema; and
 - whether optional visualizations or additional output formats are needed.
+
+## 13. v0.2 (Status: In progress)
+
+### Objective
+
+Enable grouped compliance analysis using user-selected identifying/compliance
+columns while preserving the current v0.1 overall report and presentation
+conventions.
+
+### Scope
+
+- Accept a non-empty `group_by` list of allowed identifying/compliance fields.
+- Partition rows by unique combinations of those fields.
+- Run the existing deterministic compliance and comparison calculations
+  independently for each group.
+- Keep the current v0.1 overall analysis as the first report section.
+- Render grouped reports after the overall analysis.
+
+### Behavior changes
+
+- `group_by: []` remains the backward-compatible ungrouped behavior.
+- Grouped reports contain the existing per-pivot compliance and pivot-comparison
+  presentations, with the group key shown as the group context.
+- Grouped reports do not contain the top-20 failure table.
+- Grouped reports do not introduce denominator columns, a second coverage table,
+  or other new statistical presentation elements. Existing percentage, blank,
+  and `ERROR` rendering conventions remain authoritative.
+- Blank grouping values are shown as `(blank)`.
+- Groups without a valid main-pivot `wcMargin` are skipped and reported through
+  the existing warning-list presentation.
+- The grouped report order is not a statistical property. Any deterministic
+  display order is acceptable while visualization and hierarchy are out of
+  scope.
+
+### Acceptance criteria
+
+1. A valid `group_by` configuration creates one analysis for every unique group
+   key and does not lose rows because of blank grouping values.
+2. Each valid group uses the same pass/fail, comparison-direction,
+   acceptable-variation, and coverage-gap rules as v0.1.
+3. The overall v0.1 report remains first and unchanged in substance.
+4. Grouped reports appear after the overall report and exclude the top-20
+   failure table.
+5. A group without a valid main-pivot `wcMargin` produces a coverage warning,
+   is skipped, and does not stop valid groups from being reported.
+6. Grouped HTML output uses the existing v0.1 conventions for percentages,
+   unavailable values, warnings, and calculation errors.
+
+### Compatibility and migration notes
+
+- Existing `group_by: []` settings retain v0.1 behavior.
+- `aggregate_port_groups` does not define an additional grouping mode in v0.2;
+  `group_by` is the source of truth for grouped analysis.
+
+### Open questions
+
+- None for the v0.2 grouped-analysis behavior described above.

@@ -1,4 +1,4 @@
-"""Typed intermediate representations shared by the v0.1 pipeline."""
+"""Typed intermediate representations shared by the v0.2 pipeline."""
 
 from __future__ import annotations
 
@@ -125,9 +125,17 @@ class MeasurementStatistics:
 
 
 @dataclass(frozen=True, slots=True)
+class GroupedAnalysis:
+    group_key: tuple[tuple[str, Any], ...]
+    statistics: MeasurementStatistics
+
+
+@dataclass(frozen=True, slots=True)
 class AnalysisResult:
     settings: Settings
     parsed: ParsedMeasurement
     statistics: MeasurementStatistics
     generated_at: str
     notes: tuple[str, ...] = field(default_factory=tuple)
+    grouped_analyses: tuple[GroupedAnalysis, ...] = field(default_factory=tuple)
+    group_warnings: tuple[str, ...] = field(default_factory=tuple)

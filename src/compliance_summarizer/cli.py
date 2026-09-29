@@ -1,4 +1,4 @@
-"""Command-line interface for the deterministic v0.1 application."""
+"""Command-line interface for the deterministic v0.2 application."""
 
 from __future__ import annotations
 
@@ -33,7 +33,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--init-settings",
         action="store_true",
-        help="create a v0.1 settings template and exit",
+        help="create a v0.2 settings template and exit",
     )
     parser.add_argument(
         "--overwrite",

@@ -29,18 +29,45 @@ def test_load_settings_resolves_workbook_relative_to_settings(
         ({"test": "OTHER"}, "SIGPATH"),
         ({"measurements": []}, "measurements.*GAIN"),
         ({"acceptable_variation": {"GAIN": -0.1}}, "non-negative"),
-        ({"group_by": ["MEASPORT"]}, "no aggregation"),
-        ({"aggregate_port_groups": True}, "no aggregation"),
+        ({"group_by": ["Result?"]}, "Unsupported.*group_by"),
+        ({"aggregate_port_groups": True}, "group_by"),
         ({"bypass_model": False}, "must be true"),
     ],
 )
-def test_v01_rejects_out_of_scope_configuration(
+def test_rejects_invalid_configuration(
     tmp_path, workbook_factory, sample_rows, override, message
 ):
     workbook = workbook_factory(sample_rows)
     path = write_settings(tmp_path / "settings.json", workbook, **override)
 
     with pytest.raises(ConfigurationError, match=message):
+        load_settings(path)
+
+
+def test_load_settings_accepts_and_normalizes_group_by(
+    tmp_path, workbook_factory, sample_rows
+):
+    workbook = workbook_factory(sample_rows)
+    path = write_settings(
+        tmp_path / "settings.json",
+        workbook,
+        group_by=[" lnamode ", "CHANNEL"],
+    )
+
+    settings = load_settings(path)
+
+    assert settings.group_by == ("LNAMODE", "CHANNEL")
+
+
+def test_group_by_rejects_duplicate_fields(tmp_path, workbook_factory, sample_rows):
+    workbook = workbook_factory(sample_rows)
+    path = write_settings(
+        tmp_path / "settings.json",
+        workbook,
+        group_by=["MEASPORT", " measport "],
+    )
+
+    with pytest.raises(ConfigurationError, match="duplicate"):
         load_settings(path)
 
 
