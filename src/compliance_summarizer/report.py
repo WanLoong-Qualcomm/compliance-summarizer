@@ -108,6 +108,8 @@ caption {{ text-align:left; font-weight:700; margin-bottom:8px; }} th {{ backgro
 position:sticky; top:0; text-align:left; }} th,td {{ border:1px solid var(--line); padding:8px 9px;
 vertical-align:top; white-space:nowrap; }} tr:nth-child(even) td {{ background:#fafbfe; }}
 .grouped-table thead tr:nth-child(2) th {{ top:34px; }}
+.grouped-table .header-spacer {{ background:var(--panel); }}
+.grouped-table .pivot-group {{ text-align:center; }}
 .bad {{ color:var(--bad); font-weight:700; }} .good {{ color:var(--good); font-weight:700; }}
 code {{ background:#edf0f6; padding:1px 4px; border-radius:4px; }} ul {{ margin-bottom:0; }}
 .chart {{ overflow:auto; margin-top:18px; }} svg {{ min-width:620px; max-width:100%; height:auto; }}
@@ -186,7 +188,6 @@ def _pivot_table(analysis: AnalysisResult) -> str:
                 item.pivot,
                 item.failure_rate.numerator,
                 _format_rate(item.failure_rate),
-                item.invalid_margin_count,
                 _format_number(item.worst_wc_margin),
                 _format_identity(item.worst_failure_path),
             )
@@ -196,7 +197,6 @@ def _pivot_table(analysis: AnalysisResult) -> str:
             "Pivot",
             "Failures",
             "Failure rate",
-            "Excluded wcMargin values",
             "Worst wcMargin",
             "Worst failure path",
         ),
@@ -349,15 +349,19 @@ def _grouped_table(
 ) -> str:
     materialized = tuple(tuple(row) for row in rows)
     fixed_head = "".join(
-        f'<th scope="col" rowspan="2">{_escape(header)}</th>'
-        for header in fixed_headers
+        '<th class="header-spacer" aria-hidden="true"></th>'
+        for _ in fixed_headers
     )
     group_head = "".join(
-        f'<th scope="colgroup" colspan="{len(headers)}">{_escape(label)}</th>'
+        f'<th class="pivot-group" scope="colgroup" colspan="{len(headers)}">'
+        f'{_escape(label)}</th>'
         for label, headers in groups
         if headers
     )
     detail_head = "".join(
+        f'<th scope="col">{_escape(header)}</th>'
+        for header in fixed_headers
+    ) + "".join(
         f'<th scope="col">{_escape(header)}</th>'
         for _, headers in groups
         for header in headers
