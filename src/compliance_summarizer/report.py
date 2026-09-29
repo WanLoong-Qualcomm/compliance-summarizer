@@ -13,6 +13,10 @@ from .errors import ReportError
 from .models import AnalysisResult, Rate
 
 
+class _HtmlCell(str):
+    """Trusted markup for a renderer-generated table cell."""
+
+
 def write_html_report(
     analysis: AnalysisResult,
     output_path: str | Path,
@@ -77,7 +81,7 @@ def render_html(analysis: AnalysisResult) -> str:
             _section(
                 "Top 20 main-pivot failures",
                 '<p class="method">Ordered by ascending main-pivot '
-                '<code>wcMargin</code>. Missing comparison operands remain <code>N/A</code>.</p>'
+                "<code>wcMargin</code>. Missing comparison operands remain blank.</p>"
                 + _top_failure_table(analysis),
             ),
             _section("Methodology and assumptions", _notes(analysis)),
@@ -103,13 +107,32 @@ h2 {{ margin:0 0 14px; font-size:20px; }} .subtitle {{ opacity:.84; margin:0; }}
 background:#ffffff13; }} .card strong {{ display:block; font-size:21px; }}
 section {{ margin-top:18px; padding:22px; border:1px solid var(--line); border-radius:14px;
 background:var(--panel); box-shadow:0 3px 14px #1720330b; }} .method,.muted {{ color:var(--muted); }}
-.scroll {{ overflow:auto; }} table {{ width:100%; border-collapse:collapse; font-size:13px; }}
+.scroll {{ overflow:auto; }} table {{ width:100%; border:1px solid #7F7F7F; border-collapse:collapse; font-size:13px; }}
 caption {{ text-align:left; font-weight:700; margin-bottom:8px; }} th {{ background:#eef2fb;
-position:sticky; top:0; text-align:left; }} th,td {{ border:1px solid var(--line); padding:8px 9px;
+position:sticky; top:0; text-align:left; }} th,td {{ border:1px solid #7F7F7F; padding:8px 9px;
 vertical-align:top; white-space:nowrap; }} tr:nth-child(even) td {{ background:#fafbfe; }}
 .grouped-table thead tr:nth-child(2) th {{ top:34px; }}
 .grouped-table .header-spacer {{ background:var(--panel); }}
 .grouped-table .pivot-group {{ text-align:center; }}
+.excel-summary-table thead th,
+.excel-compliance-table thead th {{ background:#FCE4D6; color:#000000; text-align:center; }}
+.excel-compliance-table thead th.header-spacer {{ background:var(--panel); border:0; }}
+.excel-compliance-table thead th.worksheet-header {{ background:var(--panel); }}
+.excel-compliance-table tbody td {{ text-align:center; }}
+.excel-compliance-table tbody td.excel-fixed-value {{ background:#E2F0D9; }}
+.excel-compliance-table tbody td.excel-bound-value {{ background:#D9E2F3; color:#0000FF; }}
+.excel-compliance-table tbody td.excel-pivot-value,
+.excel-compliance-table tbody td.excel-delta {{ background:#D9E2F3; }}
+.excel-compliance-table tbody tr:nth-child(even) td.excel-bound-value,
+.excel-compliance-table tbody tr:nth-child(even) td.excel-pivot-value,
+.excel-compliance-table tbody tr:nth-child(even) td.excel-delta {{ background:#FFFFFF; }}
+.excel-compliance-table tbody td.excel-pivot-failure {{ color:#FF0000; }}
+.excel-compliance-table tbody td.excel-result-pass {{ background:#C6EFCE; color:#006100; }}
+.excel-compliance-table tbody td.excel-result-fail {{ background:#FFC7CE; color:#9C0006; }}
+.failure-path {{ display:flex; flex-wrap:wrap; gap:4px 8px; min-width:460px; white-space:normal; }}
+.failure-path-item {{ display:inline-flex; gap:3px; padding:2px 5px; border:1px solid #B7BEC8;
+border-radius:4px; background:#F7F8FB; }}
+.failure-path-item strong {{ color:var(--muted); font-size:11px; }}
 .bad {{ color:var(--bad); font-weight:700; }} .good {{ color:var(--good); font-weight:700; }}
 code {{ background:#edf0f6; padding:1px 4px; border-radius:4px; }} ul {{ margin-bottom:0; }}
 .chart {{ overflow:auto; margin-top:18px; }} svg {{ min-width:620px; max-width:100%; height:auto; }}
@@ -146,7 +169,7 @@ def _configuration_table(analysis: AnalysisResult) -> str:
         ("GAIN acceptable variation", settings.acceptable_variation["GAIN"]),
         ("Aggregate port groups", settings.aggregate_port_groups),
         ("Model bypass", settings.bypass_model),
-        ("Background information", settings.background_information or "N/A"),
+        ("Background information", settings.background_information or ""),
     )
     return _table(("Setting", "Value"), rows, "Validated runtime settings")
 
@@ -189,7 +212,7 @@ def _pivot_table(analysis: AnalysisResult) -> str:
                 item.failure_rate.numerator,
                 _format_rate(item.failure_rate),
                 _format_number(item.worst_wc_margin),
-                _format_identity(item.worst_failure_path),
+                _format_identity_cell(item.worst_failure_path),
             )
         )
     return _table(
@@ -202,6 +225,7 @@ def _pivot_table(analysis: AnalysisResult) -> str:
         ),
         rows,
         "Per-pivot compliance statistics",
+        table_class="excel-summary-table",
     )
 
 
@@ -282,30 +306,52 @@ def _top_failure_table(analysis: AnalysisResult) -> str:
         for pivot in schema.pivots
     )
     comparison_headers = tuple(
-        f"Delta to {comparison.comparison_pivot}"
+        f"Δ({analysis.statistics.main_pivot}, {comparison.comparison_pivot})"
         for comparison in analysis.statistics.comparisons
     )
     rows: list[tuple[object, ...]] = []
+    cell_classes: list[tuple[str, ...]] = []
     for item in analysis.statistics.top_failure_cases:
         case = item.case
         row: list[object] = [case.worksheet_row]
-        row.extend(case.fixed_values.get(header) for header in fixed_headers)
+        classes: list[str] = ["excel-worksheet-row"]
+        for header in fixed_headers:
+            value = case.fixed_values.get(header)
+            row.append(value)
+            if header == "Result?":
+                status = str(value).strip().upper()
+                classes.append(
+                    "excel-result-pass" if status == "PASS" else "excel-result-fail"
+                )
+            elif header in {"LL", "UL"}:
+                classes.append("excel-bound-value")
+            else:
+                classes.append("excel-fixed-value")
         for pivot in schema.pivots:
+            margin = case.pivot_values[pivot.name].get("wcMargin")
+            pivot_class = "excel-pivot-value"
+            if margin is not None and margin < 0:
+                pivot_class += " excel-pivot-failure"
             for statistic, _ in sorted(
                 pivot.statistics.items(), key=lambda field: field[1]
             ):
                 row.append(case.pivot_raw_values[pivot.name].get(statistic))
+                classes.append(pivot_class)
         row.extend(
             item.deltas[comparison.comparison_pivot]
             for comparison in analysis.statistics.comparisons
         )
+        classes.extend("excel-delta" for _ in analysis.statistics.comparisons)
         rows.append(tuple(row))
+        cell_classes.append(tuple(classes))
     return _grouped_table(
         ("Worksheet row",) + fixed_headers,
-        pivot_groups + (("Comparison deltas", comparison_headers),),
+        pivot_groups + (("Comparison Deltas", comparison_headers),),
         rows,
         f"Worst {min(20, len(rows))} failures for {analysis.statistics.main_pivot}",
         empty="The main pivot has no negative wcMargin values.",
+        cell_classes=cell_classes,
+        table_class="grouped-table excel-compliance-table",
     )
 
 
@@ -323,18 +369,20 @@ def _table(
     caption: str,
     *,
     empty: str = "No data available.",
+    table_class: str = "",
 ) -> str:
     materialized = tuple(tuple(row) for row in rows)
     head = "".join(f'<th scope="col">{_escape(value)}</th>' for value in headers)
     if materialized:
         body = "".join(
-            "<tr>" + "".join(f"<td>{_escape(value)}</td>" for value in row) + "</tr>"
+            "<tr>" + "".join(f"<td>{_render_cell(value)}</td>" for value in row) + "</tr>"
             for row in materialized
         )
     else:
         body = f'<tr><td colspan="{len(headers)}">{_escape(empty)}</td></tr>'
+    class_attribute = f' class="{_escape(table_class)}"' if table_class else ""
     return (
-        f'<div class="scroll"><table><caption>{_escape(caption)}</caption>'
+        f'<div class="scroll"><table{class_attribute}><caption>{_escape(caption)}</caption>'
         f"<thead><tr>{head}</tr></thead><tbody>{body}</tbody></table></div>"
     )
 
@@ -346,6 +394,8 @@ def _grouped_table(
     caption: str,
     *,
     empty: str = "No data available.",
+    cell_classes: Sequence[Sequence[str]] | None = None,
+    table_class: str = "grouped-table",
 ) -> str:
     materialized = tuple(tuple(row) for row in rows)
     fixed_head = "".join(
@@ -359,7 +409,11 @@ def _grouped_table(
         if headers
     )
     detail_head = "".join(
-        f'<th scope="col">{_escape(header)}</th>'
+        (
+            f'<th class="worksheet-header" scope="col">{_escape(header)}</th>'
+            if header == "Worksheet row"
+            else f'<th scope="col">{_escape(header)}</th>'
+        )
         for header in fixed_headers
     ) + "".join(
         f'<th scope="col">{_escape(header)}</th>'
@@ -368,14 +422,24 @@ def _grouped_table(
     )
     total_columns = len(fixed_headers) + sum(len(headers) for _, headers in groups)
     if materialized:
-        body = "".join(
-            "<tr>" + "".join(f"<td>{_escape(value)}</td>" for value in row) + "</tr>"
-            for row in materialized
-        )
+        body_rows = []
+        for index, row in enumerate(materialized):
+            classes = cell_classes[index] if cell_classes is not None else ()
+            cell_values = []
+            for column, value in enumerate(row):
+                class_attribute = (
+                    f' class="{_escape(classes[column])}"'
+                    if column < len(classes) and classes[column]
+                    else ""
+                )
+                cell_values.append(f'<td{class_attribute}>{_render_cell(value)}</td>')
+            cells = "".join(cell_values)
+            body_rows.append(f"<tr>{cells}</tr>")
+        body = "".join(body_rows)
     else:
         body = f'<tr><td colspan="{total_columns}">{_escape(empty)}</td></tr>'
     return (
-        f'<div class="scroll"><table class="grouped-table"><caption>{_escape(caption)}</caption>'
+        f'<div class="scroll"><table class="{_escape(table_class)}"><caption>{_escape(caption)}</caption>'
         f"<thead><tr>{fixed_head}{group_head}</tr><tr>{detail_head}</tr></thead>"
         f"<tbody>{body}</tbody></table></div>"
     )
@@ -383,19 +447,30 @@ def _grouped_table(
 
 def _format_rate(rate: Rate) -> str:
     if rate.percentage is None:
-        return "N/A"
+        return ""
     return f"{rate.percentage:.1f}%"
 
 
-def _format_identity(identity: tuple[tuple[str, object], ...] | None) -> str:
+def _format_identity_cell(
+    identity: tuple[tuple[str, object], ...] | None,
+) -> _HtmlCell:
     if identity is None:
-        return "N/A"
-    return "; ".join(f"{name}={_format_number(value)}" for name, value in identity)
+        return _HtmlCell("")
+    items = "".join(
+        '<span class="failure-path-item">'
+        f"<strong>{_escape(name)}</strong>"
+        f"<span>{_escape(value)}</span>"
+        "</span>"
+        for name, value in identity
+    )
+    return _HtmlCell(f'<div class="failure-path">{items}</div>')
 
 
 def _format_number(value: object) -> str:
     if value is None or value == "":
-        return "N/A"
+        return ""
+    if isinstance(value, str) and value.strip().upper() == "N/A":
+        return ""
     if isinstance(value, bool):
         return "Yes" if value else "No"
     if isinstance(value, float):
@@ -403,6 +478,12 @@ def _format_number(value: object) -> str:
     if isinstance(value, Enum):
         return str(value.value)
     return str(value)
+
+
+def _render_cell(value: object) -> str:
+    if isinstance(value, _HtmlCell):
+        return str(value)
+    return _escape(value)
 
 
 def _escape(value: object) -> str:
