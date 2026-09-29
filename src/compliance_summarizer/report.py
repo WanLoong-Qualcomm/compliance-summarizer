@@ -63,7 +63,7 @@ def render_html(analysis: AnalysisResult) -> str:
             _section(
                 "Pivot compliance",
                 '<p class="method">A negative <code>wcMargin</code> is a failure. '
-                "Blank or invalid values are excluded from each pivot's stated denominator.</p>"
+                "Blank or invalid values are excluded from each pivot's failure-rate calculation.</p>"
                 + _pivot_table(analysis)
                 + _failure_rate_chart(analysis),
             ),
@@ -107,6 +107,7 @@ background:var(--panel); box-shadow:0 3px 14px #1720330b; }} .method,.muted {{ c
 caption {{ text-align:left; font-weight:700; margin-bottom:8px; }} th {{ background:#eef2fb;
 position:sticky; top:0; text-align:left; }} th,td {{ border:1px solid var(--line); padding:8px 9px;
 vertical-align:top; white-space:nowrap; }} tr:nth-child(even) td {{ background:#fafbfe; }}
+.grouped-table thead tr:nth-child(2) th {{ top:34px; }}
 .bad {{ color:var(--bad); font-weight:700; }} .good {{ color:var(--good); font-weight:700; }}
 code {{ background:#edf0f6; padding:1px 4px; border-radius:4px; }} ul {{ margin-bottom:0; }}
 .chart {{ overflow:auto; margin-top:18px; }} svg {{ min-width:620px; max-width:100%; height:auto; }}
@@ -155,17 +156,13 @@ def _coverage(analysis: AnalysisResult) -> str:
             (
                 item.pivot,
                 item.rows_with_gaps,
-                item.gaps_by_field.get("wcMargin", 0),
-                item.gaps_by_field.get("NN_25C AVG", 0),
                 sum(item.malformed_by_field.values()),
             )
         )
     content = _table(
         (
             "Pivot",
-            "Rows with a required-value gap",
-            "wcMargin gaps",
-            "NN_25C AVG gaps",
+            "Coverage gaps",
             "Malformed/non-finite values",
         ),
         rows,
@@ -188,7 +185,6 @@ def _pivot_table(analysis: AnalysisResult) -> str:
             (
                 item.pivot,
                 item.failure_rate.numerator,
-                item.failure_rate.denominator,
                 _format_rate(item.failure_rate),
                 item.invalid_margin_count,
                 _format_number(item.worst_wc_margin),
@@ -199,7 +195,6 @@ def _pivot_table(analysis: AnalysisResult) -> str:
         (
             "Pivot",
             "Failures",
-            "Valid wcMargin denominator",
             "Failure rate",
             "Excluded wcMargin values",
             "Worst wcMargin",
@@ -243,8 +238,6 @@ def _comparison_table(analysis: AnalysisResult) -> str:
         rows.append(
             (
                 item.comparison_pivot,
-                item.paired_count,
-                item.main_only_count,
                 _format_rate(item.degradation_rate),
                 _format_rate(item.unchanged_rate),
                 _format_rate(item.improvement_rate),
@@ -257,15 +250,13 @@ def _comparison_table(analysis: AnalysisResult) -> str:
     return _table(
         (
             "Comparison pivot",
-            "Valid paired denominator",
-            "Main-only rows",
             "Degradation rate",
             "Unchanged rate",
             "Improvement rate",
-            "Maximum degradation delta",
-            "Maximum improvement delta",
-            "Average degradation magnitude on main failures",
-            "Degraded main-failure pairs",
+            "Maximum degradation",
+            "Maximum improvement",
+            "Average degradation on main failures",
+            "Degraded main failures",
         ),
         rows,
         f"Comparisons anchored on {analysis.statistics.main_pivot}",
@@ -278,16 +269,22 @@ def _top_failure_table(analysis: AnalysisResult) -> str:
     fixed_headers = tuple(
         header for header, _ in sorted(schema.fixed_columns.items(), key=lambda item: item[1])
     )
-    pivot_headers = tuple(
-        f"{pivot.name} {statistic}"
+    pivot_groups = tuple(
+        (
+            pivot.name,
+            tuple(
+                statistic
+                for statistic, _ in sorted(
+                    pivot.statistics.items(), key=lambda item: item[1]
+                )
+            ),
+        )
         for pivot in schema.pivots
-        for statistic, _ in sorted(pivot.statistics.items(), key=lambda item: item[1])
     )
     comparison_headers = tuple(
-        f"Δ {analysis.statistics.main_pivot} − {comparison.comparison_pivot}"
+        f"Delta to {comparison.comparison_pivot}"
         for comparison in analysis.statistics.comparisons
     )
-    headers = ("Worksheet row",) + fixed_headers + pivot_headers + comparison_headers
     rows: list[tuple[object, ...]] = []
     for item in analysis.statistics.top_failure_cases:
         case = item.case
@@ -303,8 +300,9 @@ def _top_failure_table(analysis: AnalysisResult) -> str:
             for comparison in analysis.statistics.comparisons
         )
         rows.append(tuple(row))
-    return _table(
-        headers,
+    return _grouped_table(
+        ("Worksheet row",) + fixed_headers,
+        pivot_groups + (("Comparison deltas", comparison_headers),),
         rows,
         f"Worst {min(20, len(rows))} failures for {analysis.statistics.main_pivot}",
         empty="The main pivot has no negative wcMargin values.",
@@ -341,10 +339,48 @@ def _table(
     )
 
 
+def _grouped_table(
+    fixed_headers: Sequence[object],
+    groups: Sequence[tuple[object, Sequence[object]]],
+    rows: Iterable[Sequence[object]],
+    caption: str,
+    *,
+    empty: str = "No data available.",
+) -> str:
+    materialized = tuple(tuple(row) for row in rows)
+    fixed_head = "".join(
+        f'<th scope="col" rowspan="2">{_escape(header)}</th>'
+        for header in fixed_headers
+    )
+    group_head = "".join(
+        f'<th scope="colgroup" colspan="{len(headers)}">{_escape(label)}</th>'
+        for label, headers in groups
+        if headers
+    )
+    detail_head = "".join(
+        f'<th scope="col">{_escape(header)}</th>'
+        for _, headers in groups
+        for header in headers
+    )
+    total_columns = len(fixed_headers) + sum(len(headers) for _, headers in groups)
+    if materialized:
+        body = "".join(
+            "<tr>" + "".join(f"<td>{_escape(value)}</td>" for value in row) + "</tr>"
+            for row in materialized
+        )
+    else:
+        body = f'<tr><td colspan="{total_columns}">{_escape(empty)}</td></tr>'
+    return (
+        f'<div class="scroll"><table class="grouped-table"><caption>{_escape(caption)}</caption>'
+        f"<thead><tr>{fixed_head}{group_head}</tr><tr>{detail_head}</tr></thead>"
+        f"<tbody>{body}</tbody></table></div>"
+    )
+
+
 def _format_rate(rate: Rate) -> str:
     if rate.percentage is None:
-        return f"{rate.numerator}/{rate.denominator} (N/A)"
-    return f"{rate.numerator}/{rate.denominator} ({rate.percentage:.1f}%)"
+        return "N/A"
+    return f"{rate.percentage:.1f}%"
 
 
 def _format_identity(identity: tuple[tuple[str, object], ...] | None) -> str:
