@@ -67,7 +67,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     print(f"Processed {analysis.statistics.case_count} GAIN row(s).")
     print(
-        f"Main-pivot failures: {main_stats.failure_rate.numerator}/"
+        f"{analysis.statistics.main_pivot} failures: {main_stats.failure_rate.numerator}/"
         f"{main_stats.failure_rate.denominator}."
     )
     print(f"Coverage warnings: {len(analysis.parsed.warnings)}.")

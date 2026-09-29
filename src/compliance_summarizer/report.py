@@ -10,11 +10,7 @@ from pathlib import Path
 from typing import Iterable, Sequence
 
 from .errors import ReportError
-from .models import AnalysisResult, Rate
-
-
-class _HtmlCell(str):
-    """Trusted markup for a renderer-generated table cell."""
+from .models import CALCULATION_ERROR, AnalysisResult, Rate
 
 
 def write_html_report(
@@ -68,19 +64,18 @@ def render_html(analysis: AnalysisResult) -> str:
                 "Pivot compliance",
                 '<p class="method">A negative <code>wcMargin</code> is a failure. '
                 "Blank or invalid values are excluded from each pivot's failure-rate calculation.</p>"
-                + _pivot_table(analysis)
-                + _failure_rate_chart(analysis),
+                + _pivot_table(analysis),
             ),
             _section(
-                "Main-pivot comparisons",
-                '<p class="method"><code>delta = main NN_25C AVG − comparison '
+                f"{stats.main_pivot} comparisons",
+                f'<p class="method"><code>delta = {_escape(stats.main_pivot)} NN_25C AVG − comparison '
                 "NN_25C AVG</code>. For GAIN, negative is degradation and positive is "
                 "improvement. Values within the inclusive tolerance are unchanged.</p>"
                 + _comparison_table(analysis),
             ),
             _section(
-                "Top 20 main-pivot failures",
-                '<p class="method">Ordered by ascending main-pivot '
+                f"Top 20 {stats.main_pivot} failures",
+                f'<p class="method">Ordered by ascending {_escape(stats.main_pivot)} '
                 "<code>wcMargin</code>. Missing comparison operands remain blank.</p>"
                 + _top_failure_table(analysis),
             ),
@@ -117,6 +112,7 @@ vertical-align:top; white-space:nowrap; }} tr:nth-child(even) td {{ background:#
 .excel-summary-table thead th,
 .excel-compliance-table thead th {{ background:#FCE4D6; color:#000000; text-align:center; }}
 .excel-compliance-table thead th.header-spacer {{ background:var(--panel); border:0; }}
+.excel-compliance-table thead th.worksheet-spacer {{ background:var(--panel); border:1px solid #7F7F7F; }}
 .excel-compliance-table thead th.worksheet-header {{ background:var(--panel); }}
 .excel-compliance-table tbody td {{ text-align:center; }}
 .excel-compliance-table tbody td.excel-fixed-value {{ background:#E2F0D9; }}
@@ -129,13 +125,9 @@ vertical-align:top; white-space:nowrap; }} tr:nth-child(even) td {{ background:#
 .excel-compliance-table tbody td.excel-pivot-failure {{ color:#FF0000; }}
 .excel-compliance-table tbody td.excel-result-pass {{ background:#C6EFCE; color:#006100; }}
 .excel-compliance-table tbody td.excel-result-fail {{ background:#FFC7CE; color:#9C0006; }}
-.failure-path {{ display:flex; flex-wrap:wrap; gap:4px 8px; min-width:460px; white-space:normal; }}
-.failure-path-item {{ display:inline-flex; gap:3px; padding:2px 5px; border:1px solid #B7BEC8;
-border-radius:4px; background:#F7F8FB; }}
-.failure-path-item strong {{ color:var(--muted); font-size:11px; }}
+.calculation-error {{ color:#C00000; font-weight:700; }}
 .bad {{ color:var(--bad); font-weight:700; }} .good {{ color:var(--good); font-weight:700; }}
 code {{ background:#edf0f6; padding:1px 4px; border-radius:4px; }} ul {{ margin-bottom:0; }}
-.chart {{ overflow:auto; margin-top:18px; }} svg {{ min-width:620px; max-width:100%; height:auto; }}
 </style>
 </head>
 <body><main>{body}</main></body>
@@ -145,16 +137,17 @@ code {{ background:#edf0f6; padding:1px 4px; border-radius:4px; }} ul {{ margin-
 
 def _hero(analysis: AnalysisResult, failure_rate: Rate) -> str:
     stats = analysis.statistics
+    main_pivot = _escape(stats.main_pivot)
     failure_label = _format_rate(failure_rate)
     return f"""<header class="hero">
 <h1>{_escape(stats.measurement)} compliance summary</h1>
 <p class="subtitle">{_escape(analysis.settings.excel_file_path.name)} ·
 {_escape(analysis.settings.compliance_sheet_name)} · generated {_escape(analysis.generated_at)}</p>
 <div class="cards">
-<div class="card"><span>Main pivot</span><strong>{_escape(stats.main_pivot)}</strong></div>
+<div class="card"><span>{main_pivot}</span><strong>Baseline</strong></div>
 <div class="card"><span>Measurement rows</span><strong>{stats.case_count}</strong></div>
-<div class="card"><span>Main failures</span><strong>{failure_rate.numerator}</strong></div>
-<div class="card"><span>Main failure rate</span><strong>{_escape(failure_label)}</strong></div>
+<div class="card"><span>{main_pivot} failures</span><strong>{failure_rate.numerator}</strong></div>
+<div class="card"><span>{main_pivot} failure rate</span><strong>{_render_cell(failure_label)}</strong></div>
 </div></header>"""
 
 
@@ -165,7 +158,7 @@ def _configuration_table(analysis: AnalysisResult) -> str:
         ("Sheet", settings.compliance_sheet_name),
         ("Test", settings.test),
         ("Measurement", ", ".join(settings.measurements)),
-        ("Main pivot", settings.main_pivot),
+        ("Baseline", settings.main_pivot),
         ("GAIN acceptable variation", settings.acceptable_variation["GAIN"]),
         ("Aggregate port groups", settings.aggregate_port_groups),
         ("Model bypass", settings.bypass_model),
@@ -212,7 +205,7 @@ def _pivot_table(analysis: AnalysisResult) -> str:
                 item.failure_rate.numerator,
                 _format_rate(item.failure_rate),
                 _format_number(item.worst_wc_margin),
-                _format_identity_cell(item.worst_failure_path),
+                _format_identity(item.worst_failure_path),
             )
         )
     return _table(
@@ -229,34 +222,8 @@ def _pivot_table(analysis: AnalysisResult) -> str:
     )
 
 
-def _failure_rate_chart(analysis: AnalysisResult) -> str:
-    items = analysis.statistics.pivot_statistics
-    row_height = 42
-    height = 42 + row_height * len(items)
-    chart_width = 760
-    bar_left = 190
-    bar_width = 470
-    rows: list[str] = []
-    for index, item in enumerate(items):
-        y = 28 + index * row_height
-        percentage = item.failure_rate.percentage or 0.0
-        width = percentage / 100.0 * bar_width
-        rows.append(
-            f'<text x="0" y="{y + 14}" fill="#172033">{_escape(item.pivot)}</text>'
-            f'<rect x="{bar_left}" y="{y}" width="{bar_width}" height="20" rx="4" fill="#e8ecf5"/>'
-            f'<rect x="{bar_left}" y="{y}" width="{width:.2f}" height="20" rx="4" fill="#b42318"/>'
-            f'<text x="{bar_left + bar_width + 12}" y="{y + 14}" fill="#172033">'
-            f'{_escape(_format_rate(item.failure_rate))}</text>'
-        )
-    return (
-        '<div class="chart"><svg role="img" aria-label="Failure rate by pivot" '
-        f'viewBox="0 0 {chart_width} {height}">'
-        + "".join(rows)
-        + "</svg></div>"
-    )
-
-
 def _comparison_table(analysis: AnalysisResult) -> str:
+    main_pivot = analysis.statistics.main_pivot
     rows = []
     for item in analysis.statistics.comparisons:
         rows.append(
@@ -267,8 +234,9 @@ def _comparison_table(analysis: AnalysisResult) -> str:
                 _format_rate(item.improvement_rate),
                 _format_number(item.maximum_degradation),
                 _format_number(item.maximum_improvement),
-                _format_number(item.average_degradation_on_main_failures),
                 item.degraded_main_failure_count,
+                _format_number(item.maximum_degradation_on_main_failures),
+                _format_number(item.average_degradation_on_main_failures),
             )
         )
     return _table(
@@ -279,12 +247,14 @@ def _comparison_table(analysis: AnalysisResult) -> str:
             "Improvement rate",
             "Maximum degradation",
             "Maximum improvement",
-            "Average degradation on main failures",
-            "Degraded main failures",
+            f"Degraded {main_pivot} failures",
+            f"Maximum degradation on {main_pivot} failures",
+            f"Average degradation on {main_pivot} failures",
         ),
         rows,
         f"Comparisons anchored on {analysis.statistics.main_pivot}",
         empty="No comparison pivots were discovered.",
+        table_class="excel-summary-table",
     )
 
 
@@ -349,7 +319,7 @@ def _top_failure_table(analysis: AnalysisResult) -> str:
         pivot_groups + (("Comparison Deltas", comparison_headers),),
         rows,
         f"Worst {min(20, len(rows))} failures for {analysis.statistics.main_pivot}",
-        empty="The main pivot has no negative wcMargin values.",
+        empty=f"{analysis.statistics.main_pivot} has no negative wcMargin values.",
         cell_classes=cell_classes,
         table_class="grouped-table excel-compliance-table",
     )
@@ -399,8 +369,12 @@ def _grouped_table(
 ) -> str:
     materialized = tuple(tuple(row) for row in rows)
     fixed_head = "".join(
-        '<th class="header-spacer" aria-hidden="true"></th>'
-        for _ in fixed_headers
+        (
+            '<th class="worksheet-spacer" aria-hidden="true"></th>'
+            if index == 0
+            else '<th class="header-spacer" aria-hidden="true"></th>'
+        )
+        for index, _ in enumerate(fixed_headers)
     )
     group_head = "".join(
         f'<th class="pivot-group" scope="colgroup" colspan="{len(headers)}">'
@@ -446,24 +420,17 @@ def _grouped_table(
 
 
 def _format_rate(rate: Rate) -> str:
+    if rate.error:
+        return CALCULATION_ERROR
     if rate.percentage is None:
         return ""
     return f"{rate.percentage:.1f}%"
 
 
-def _format_identity_cell(
-    identity: tuple[tuple[str, object], ...] | None,
-) -> _HtmlCell:
+def _format_identity(identity: tuple[tuple[str, object], ...] | None) -> str:
     if identity is None:
-        return _HtmlCell("")
-    items = "".join(
-        '<span class="failure-path-item">'
-        f"<strong>{_escape(name)}</strong>"
-        f"<span>{_escape(value)}</span>"
-        "</span>"
-        for name, value in identity
-    )
-    return _HtmlCell(f'<div class="failure-path">{items}</div>')
+        return ""
+    return "; ".join(f"{name}={_format_number(value)}" for name, value in identity)
 
 
 def _format_number(value: object) -> str:
@@ -481,9 +448,10 @@ def _format_number(value: object) -> str:
 
 
 def _render_cell(value: object) -> str:
-    if isinstance(value, _HtmlCell):
-        return str(value)
-    return _escape(value)
+    formatted = _format_number(value)
+    if formatted == CALCULATION_ERROR:
+        return '<strong class="calculation-error">ERROR</strong>'
+    return html.escape(formatted, quote=True)
 
 
 def _escape(value: object) -> str:

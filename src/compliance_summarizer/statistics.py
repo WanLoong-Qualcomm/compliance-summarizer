@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+from math import isfinite
 from statistics import fmean
 
 from .errors import WorkbookValidationError
 from .measurements import MeasurementDefinition, get_measurement_definition
 from .models import (
     ComplianceCase,
+    CALCULATION_ERROR,
     ComparisonStatistics,
     FailureCaseStatistics,
     MeasurementStatistics,
@@ -131,11 +133,17 @@ def _failure_case(
     for pivot in comparison_names:
         comparison = _value(case, pivot, definition.comparison_statistic)
         comparison_values[pivot] = comparison
-        deltas[pivot] = (
-            definition.delta(main_average, comparison)
-            if main_average is not None and comparison is not None
-            else None
-        )
+        if main_average is None or comparison is None:
+            deltas[pivot] = None
+        else:
+            try:
+                delta = definition.delta(main_average, comparison)
+                oriented_delta = definition.oriented_delta(delta)
+                if not isfinite(delta) or not isfinite(oriented_delta):
+                    raise ValueError("non-finite comparison delta")
+                deltas[pivot] = oriented_delta
+            except Exception:
+                deltas[pivot] = CALCULATION_ERROR
     margin = _value(case, main_pivot, definition.margin_statistic)
     assert margin is not None
     return FailureCaseStatistics(
@@ -154,39 +162,74 @@ def _comparison_statistics(
     main_failures: tuple[ComplianceCase, ...],
     definition: MeasurementDefinition,
 ) -> ComparisonStatistics:
-    deltas: list[float] = []
+    paired: list[tuple[float, float, str]] = []
     main_only_count = 0
+    calculation_error = False
     for case in parsed.cases:
         main = _value(case, main_pivot, definition.comparison_statistic)
         comparison = _value(case, comparison_pivot, definition.comparison_statistic)
         if main is not None and comparison is None:
             main_only_count += 1
         if main is not None and comparison is not None:
-            deltas.append(definition.delta(main, comparison))
+            try:
+                delta = definition.delta(main, comparison)
+                oriented_delta = definition.oriented_delta(delta)
+                if not isfinite(delta) or not isfinite(oriented_delta):
+                    raise ValueError("non-finite comparison delta")
+                paired.append(
+                    (delta, oriented_delta, definition.classify(delta, tolerance))
+                )
+            except Exception:
+                calculation_error = True
 
     degradation = [
-        delta for delta in deltas if definition.classify(delta, tolerance) == "degradation"
+        delta
+        for _, delta, classification in paired
+        if classification == "degradation"
     ]
     unchanged = [
-        delta for delta in deltas if definition.classify(delta, tolerance) == "unchanged"
+        delta
+        for _, delta, classification in paired
+        if classification == "unchanged"
     ]
     improvement = [
-        delta for delta in deltas if definition.classify(delta, tolerance) == "improvement"
+        delta
+        for _, delta, classification in paired
+        if classification == "improvement"
     ]
 
-    failure_degradation_magnitudes: list[float] = []
+    failure_degradations: list[float] = []
     for case in main_failures:
         main = _value(case, main_pivot, definition.comparison_statistic)
         comparison = _value(case, comparison_pivot, definition.comparison_statistic)
         if main is None or comparison is None:
             continue
-        delta = definition.delta(main, comparison)
-        if definition.classify(delta, tolerance) == "degradation":
-            failure_degradation_magnitudes.append(
-                definition.degradation_magnitude(delta)
-            )
+        try:
+            delta = definition.delta(main, comparison)
+            oriented_delta = definition.oriented_delta(delta)
+            if not isfinite(delta) or not isfinite(oriented_delta):
+                raise ValueError("non-finite comparison delta")
+            if definition.classify(delta, tolerance) == "degradation":
+                failure_degradations.append(oriented_delta)
+        except Exception:
+            calculation_error = True
 
-    denominator = len(deltas)
+    denominator = len(paired)
+    if calculation_error:
+        return ComparisonStatistics(
+            comparison_pivot=comparison_pivot,
+            paired_count=denominator,
+            main_only_count=main_only_count,
+            degradation_rate=Rate(0, denominator, error=True),
+            unchanged_rate=Rate(0, denominator, error=True),
+            improvement_rate=Rate(0, denominator, error=True),
+            maximum_degradation=CALCULATION_ERROR,
+            maximum_improvement=CALCULATION_ERROR,
+            maximum_degradation_on_main_failures=CALCULATION_ERROR,
+            average_degradation_on_main_failures=CALCULATION_ERROR,
+            degraded_main_failure_count=CALCULATION_ERROR,
+        )
+
     return ComparisonStatistics(
         comparison_pivot=comparison_pivot,
         paired_count=denominator,
@@ -194,14 +237,17 @@ def _comparison_statistics(
         degradation_rate=Rate(len(degradation), denominator),
         unchanged_rate=Rate(len(unchanged), denominator),
         improvement_rate=Rate(len(improvement), denominator),
-        maximum_degradation=_most_degraded(degradation, definition),
-        maximum_improvement=_most_improved(improvement, definition),
+        maximum_degradation=min(degradation) if degradation else None,
+        maximum_improvement=max(improvement) if improvement else None,
+        maximum_degradation_on_main_failures=(
+            min(failure_degradations) if failure_degradations else None
+        ),
         average_degradation_on_main_failures=(
-            fmean(failure_degradation_magnitudes)
-            if failure_degradation_magnitudes
+            fmean(failure_degradations)
+            if failure_degradations
             else None
         ),
-        degraded_main_failure_count=len(failure_degradation_magnitudes),
+        degraded_main_failure_count=len(failure_degradations),
     )
 
 
@@ -211,19 +257,3 @@ def _value(case: ComplianceCase, pivot: str, statistic: str) -> float | None:
 
 def _identity_sort_key(identity: tuple[tuple[str, object], ...]) -> tuple[str, ...]:
     return tuple(f"{name}={value!s}" for name, value in identity)
-
-
-def _most_degraded(
-    deltas: list[float], definition: MeasurementDefinition
-) -> float | None:
-    if not deltas:
-        return None
-    return min(deltas) if definition.higher_is_better else max(deltas)
-
-
-def _most_improved(
-    deltas: list[float], definition: MeasurementDefinition
-) -> float | None:
-    if not deltas:
-        return None
-    return max(deltas) if definition.higher_is_better else min(deltas)

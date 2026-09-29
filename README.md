@@ -71,10 +71,25 @@ See `settings.example.json` for a complete example.
   `MEASPORT`, `DLP`, `DIV`, `TESTNAME`, `GAINMODE`, `BBPATH`, `FREQ`,
   `CHANNEL`, `Result?`, `LL`, and `UL`. `BW` and `F0_MHZ` are optional.
 
-Missing or invalid numeric pivot values are reported as coverage gaps. Main
-pivot statistics use every valid main-pivot value even when another pivot is
-missing. Pairwise summary metrics include only rows where both averages are
-valid, and every rate shows its denominator.
+Missing or invalid required numeric pivot values are reported as coverage gaps.
+They remain blank in the HTML report and are excluded only from the affected
+metrics. Main pivot statistics use every valid main-pivot value even when
+another pivot is missing. Pairwise summary metrics include only rows where
+both averages are valid. Rates are calculated with their denominators
+internally but displayed as percentages only; a rate with no valid pairs is
+blank.
+
+The report is a standalone HTML file with these sections:
+
+- coverage and validation warnings;
+- per-pivot compliance statistics based on `wcMargin`;
+- main-pivot comparisons using signed degradation and improvement values;
+- an Excel-style top-20 main-pivot failure table; and
+- methodology and assumptions.
+
+Unexpected calculation failures are rendered as bold red `ERROR` text. The
+source `Result?` value is retained for context and is never used for a
+calculation. The v0.1 report contains no external assets or charts.
 
 ## Test
 

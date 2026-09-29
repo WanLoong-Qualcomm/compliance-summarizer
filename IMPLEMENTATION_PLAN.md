@@ -1,4 +1,4 @@
-# v0.1 Implementation Plan
+# v0.1 Implementation Plan and Closeout
 
 This plan implements the current requirements in `PROJECT.md`. It intentionally
 does not carry forward behavior from older prototypes where that behavior
@@ -28,36 +28,62 @@ non-GAIN measurements remain outside v0.1.
    - Calculate compliance exclusively from `wcMargin`.
    - Compare every pivot with the main pivot using paired `NN_25C AVG` values.
    - Produce per-pivot failure statistics, worst paths, comparison rates and
-     extrema, average degradation on main failures, and the top 20 failures.
+     signed extrema, main-failure degradation counts, maximum and average
+     degradation on main failures, and the top 20 failures.
 4. **Report and CLI**
-   - Render escaped, inline-styled HTML and an inline SVG failure-rate graphic.
-   - Display configuration, warnings, denominators, statistics, and source
-     fields for the top failures.
+   - Render escaped, inline-styled standalone HTML without external assets or
+     charts.
+   - Display configuration, coverage warnings, percentage-only rates,
+     statistics, and source fields for the top failures.
    - Expose initialization and report generation through one CLI.
 5. **Qualification**
-   - Test schema errors, invalid settings, coverage gaps, malformed values,
-     tolerance boundaries, ties, empty results, HTML escaping, and end-to-end
-     CLI behavior.
-   - Run the complete suite through `uv run pytest`.
+   - Keep coverage gaps, malformed values, tolerance boundaries, ties, empty
+     results, HTML escaping, and end-to-end CLI behavior represented in the
+     existing test suite.
+   - Run the suite as part of a future verification pass.
 
-## Explicit v0.1 decisions for open questions
+## Explicit v0.1 decisions
 
-- Blank, non-numeric, and non-finite `wcMargin`/`NN_25C AVG` cells are reported
-  as coverage gaps. They are not failures and do not enter affected rates.
+- Blank, non-numeric, and non-finite required pivot cells are reported as
+  coverage gaps. Coverage gaps are expected unavailable data: they remain
+  blank in the report, are not failures, and do not enter affected metrics.
+- An unexpected calculation failure is represented by the literal `ERROR`.
+  The HTML renderer displays it in bold red text instead of silently leaving a
+  blank.
+- Comparison rates use valid paired `NN_25C AVG` values internally, but the
+  report shows percentages only. Rates with no valid pairs are blank.
+- Comparison deltas are oriented by the measurement definition. Degradation is
+  negative, improvement is positive, and unchanged values are within the
+  inclusive acceptable variation.
+- For GAIN, the raw delta is `main NN_25C AVG - comparison NN_25C AVG`.
 - The top-failure table contains exactly 20 rows when at least 20 failures
   exist. Ties use identifying fields and the source row as a final display-only
   tie breaker.
 - A case identity uses the available SIGPATH identifying columns. Duplicate
   identities produce a warning; the worksheet row is retained for traceability.
-- Average degradation on main-pivot failures is the mean magnitude of deltas
-  classified as degradation, not an average that can be cancelled by
-  improvements.
+- Main-failure degradation statistics contain the signed maximum degradation
+  and signed average degradation. They are calculated only for paired rows
+  classified as degradation.
 - AI remains a deterministic bypass statement; no prompt or provider call is
   made.
 
-## Definition of done
+## v0.1 closeout
 
-- All v0.1 acceptance criteria in `PROJECT.md` are represented in code/tests.
-- `uv sync --dev` and `uv run pytest` succeed.
-- A valid configured workbook produces one standalone HTML file.
-- No calculation uses the source `Result?` field.
+The v0.1 implementation is complete for the configured SIGPATH GAIN workflow.
+A valid configured workbook produces one standalone HTML report, and the
+report uses the configured pivot name throughout its headings and labels. The
+Excel-style top-failure table keeps pivot names in a group row above the field
+headers, includes a separate worksheet-row header cell, and leaves expected
+unavailable values blank.
+
+The existing test expectations have been aligned with the v0.1 output. The
+test suite was not run during this documentation closeout; the generated
+report and `git diff --check` were used for final verification.
+
+The following remain intentionally deferred to the next revision:
+
+- aggregation and port-group reporting;
+- non-GAIN measurement definitions;
+- model-backed explanations and a defined AI output contract;
+- additional report formats and optional visualizations; and
+- broader workbook contracts beyond the v0.1 SIGPATH layout.

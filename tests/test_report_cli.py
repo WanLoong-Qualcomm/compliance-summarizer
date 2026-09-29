@@ -19,13 +19,13 @@ def test_report_is_self_contained_and_escapes_user_text(
 
     rendered = render_html(analyze(settings))
 
-    assert "<svg" in rendered
+    assert "<svg" not in rendered
     assert "http://" not in rendered
     assert "https://" not in rendered
     assert "<script>alert" not in rendered
     assert "&lt;script&gt;" in rendered
     assert "Result?" in rendered
-    assert "Top 20 main-pivot failures" in rendered
+    assert "Top 20 DUT-1_VAR1 failures" in rendered
 
 
 def test_cli_runs_end_to_end(tmp_path, workbook_factory, sample_rows, capsys):

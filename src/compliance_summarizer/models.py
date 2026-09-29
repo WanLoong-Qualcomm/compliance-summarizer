@@ -7,6 +7,9 @@ from pathlib import Path
 from typing import Any
 
 
+CALCULATION_ERROR = "ERROR"
+
+
 @dataclass(frozen=True, slots=True)
 class Settings:
     excel_file_path: Path
@@ -69,6 +72,7 @@ class ParsedMeasurement:
 class Rate:
     numerator: int
     denominator: int
+    error: bool = False
 
     @property
     def percentage(self) -> float | None:
@@ -91,7 +95,7 @@ class FailureCaseStatistics:
     case: ComplianceCase
     main_wc_margin: float
     comparison_values: dict[str, float | None]
-    deltas: dict[str, float | None]
+    deltas: dict[str, float | str | None]
 
 
 @dataclass(frozen=True, slots=True)
@@ -102,10 +106,11 @@ class ComparisonStatistics:
     degradation_rate: Rate
     unchanged_rate: Rate
     improvement_rate: Rate
-    maximum_degradation: float | None
-    maximum_improvement: float | None
-    average_degradation_on_main_failures: float | None
-    degraded_main_failure_count: int
+    maximum_degradation: float | str | None
+    maximum_improvement: float | str | None
+    maximum_degradation_on_main_failures: float | str | None
+    average_degradation_on_main_failures: float | str | None
+    degraded_main_failure_count: int | str
 
 
 @dataclass(frozen=True, slots=True)

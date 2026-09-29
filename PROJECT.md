@@ -67,14 +67,15 @@ The workflow is intentionally staged so that validation, calculation, and report
       2. Calculate main statistics for every pivot.
       3. Calculate comparison statistics between the main pivot and every other pivot.
       4. Reduce low-level statistics to report-ready key statistics.
-   6. Generate aggregate-centric charts when aggregation is enabled.
+   6. Reserve aggregate-centric charts for a later version; v0.1 has no chart
+      output.
    7. Combine the prompt, input/output templates, calculated statistics, and supporting resources.
    8. Generate the measurement report or summary through the AI client, unless model usage is bypassed.
 
 5. **Generate the overall report**
    - Combine the overall prompt, templates, resources, and per-measurement reports.
    - Generate the overall compliance report or summary through the AI client, unless model usage is bypassed.
-   - Render the result as an HTML file with the calculated statistics and charts.
+   - Render the result as a standalone HTML file with the calculated statistics.
 
 The pipeline should expose structured intermediate results between stages. This allows later versions to add report formats, charts, validation rules, or model providers without coupling them to Excel parsing.
 
@@ -88,7 +89,10 @@ The sample/reference workbook uses the `Combined` sheet with the following layou
 - **Row 3:** Pivot fields, such as `MIN`, `MAX`, and `NN_25c AVG`.
 - **Row 4:** Measurement/input column headers, such as `LNAMODE` and `CAMODE`.
 
-Column headers in the compliance sheet are compulsory unless a future test definition explicitly marks one as optional.
+The v0.1 SIGPATH contract requires the identifying fields, `Result?`, `LL`,
+and `UL`. `BW` and `F0_MHZ` are optional fixed fields. Pivot statistics must
+include `NN_25c AVG` and `wcMargin`; `MIN`, `MAX`, and `wcValue` are retained
+when present.
 
 The parser should treat the header locations and required fields as part of a test-specific data contract rather than scattering row numbers throughout the implementation.
 
@@ -111,7 +115,7 @@ Coverage gaps must be:
 
 For comparisons based on paired values:
 
-- **Per-row comparison tables:** use a left join from the main pivot's relevant rows. Preserve a main-pivot row when the comparison pivot is missing, and represent the comparison value and delta as `N/A` rather than dropping the row.
+- **Per-row comparison tables:** use a left join from the main pivot's relevant rows. Preserve a main-pivot row when the comparison pivot is missing, and render the comparison value and delta as blank rather than dropping the row.
 - **Paired summary metrics:** use an inner join on rows where both pivots have valid values. Exclude incomplete pairs from the mean, maximum, and rate calculations.
 - **Main-pivot failure metrics:** calculate them from valid main-pivot values even when a comparison pivot has a coverage gap.
 
@@ -128,9 +132,9 @@ Calculate independently for each pivot:
 - the failure path, meaning the complete combination of identifying columns for the main pivot's worst failure;
 - the top 20 main-pivot failure cases, ordered by ascending main-pivot `wcMargin` so the most negative value appears first;
 - the original compliance fields for each top-20 case; and
-- the delta between the main pivot and every other pivot for the top-20 cases, using `NN_25c AVG` and the measurement-specific comparison direction.
+- the signed delta between the main pivot and every other pivot for the top-20 cases, using `NN_25c AVG` and the measurement-specific comparison direction. Degradation is negative and improvement is positive.
 
-For main-pivot failure cases, also calculate the average degradation between the main pivot and every other pivot. The definition of degradation direction is measurement-specific and must be documented in the measurement definition.
+For main-pivot failure cases, also calculate the degraded-failure count, maximum degradation, and average degradation between the main pivot and every other pivot. These values are signed, so degradation is negative. The definition of degradation direction is measurement-specific and must be documented in the measurement definition.
 
 ### 6.2 Measurement comparison statistics
 
@@ -140,7 +144,10 @@ For every other pivot, calculate the comparison against the main pivot:
 - unchanged rate;
 - improvement rate;
 - maximum degradation; and
-- maximum improvement.
+- maximum improvement;
+- degraded main-failure count;
+- maximum degradation on main failures; and
+- average degradation on main failures.
 
 Classification must account for the configured acceptable variation. In general, an absolute delta within the tolerance is unchanged; deltas outside the tolerance are classified as degradation or improvement according to the selected measurement's comparison direction.
 
@@ -154,7 +161,9 @@ For `GAIN`, a positive delta means the main pivot has higher gain and is an impr
 
 Comparisons are always anchored on the configured main pivot and run against every other pivot. For example, if `DUT-1_VAR1` is the main pivot, calculate separate comparisons for `DUT-1_VAR1` versus `DUT-2_VAR1` and `DUT-1_VAR1` versus `DUT-3_VAR2`. The application must not omit a pivot merely because its DUT or variant differs from the main pivot.
 
-Rates must state their denominator and exclude rows without valid paired values.
+Rates exclude rows without valid paired values. Denominators are retained in the
+structured statistics for traceability, while the HTML report displays rates as
+percentages only. A rate with no valid pairs is blank.
 
 ### 6.3 Aggregate statistics
 
@@ -168,17 +177,23 @@ Aggregate main statistics use the same core metrics as measurement main statisti
 Aggregate statistics exclude:
 
 - the top-20 failure-case compliance table; and
-- average degradation between the main pivot and comparison pivots.
+- degraded main-failure count, maximum degradation, and average degradation
+  between the main pivot and comparison pivots.
 
 ### 6.4 Aggregate comparison statistics
 
-Aggregate comparison statistics use exactly the same definitions as measurement comparison statistics, including acceptable-variation handling, denominators, and coverage-gap treatment.
+Aggregate comparison statistics will use exactly the same definitions as
+measurement comparison statistics when aggregation is implemented, including
+acceptable-variation handling, denominators, and coverage-gap treatment.
 
 ### 6.5 Charts
 
-Charts should be generated from structured statistics rather than directly from raw workbook cells. In the current milestone, charts are limited to the capabilities explicitly enabled by the configuration. Future chart types should be registerable by measurement or aggregate type.
+Future charts should be generated from structured statistics rather than
+directly from raw workbook cells. Chart types should be registerable by
+measurement or aggregate type. v0.1 intentionally emits no chart.
 
-The HTML report should embed chart assets when practical so the generated report can be opened without access to a separate assets directory. If embedding is not supported by the selected chart library, the output contract must document the required asset files.
+Future chart assets should be embedded when practical so generated reports can
+be opened without a separate assets directory.
 
 ## 7. Configuration
 
@@ -207,7 +222,8 @@ Configuration validation should catch incompatible combinations, such as a confi
 - Support the `GAIN` measurement only.
 - Do not implement aggregation or aggregate-centric charts yet.
 - Bypass model usage. The deterministic compiled output is used directly as the report input/output.
-- Generate an HTML report containing the compiled statistics and embedded graphics where supported.
+- Generate a standalone HTML report containing the compiled statistics. No
+  chart is included in v0.1.
 - Keep prompt construction minimal or stubbed until model usage is enabled.
 
 ### v0.1 acceptance criteria
@@ -218,7 +234,11 @@ Configuration validation should catch incompatible combinations, such as a confi
 4. Pass/fail statistics use `wcMargin`, never `Result?`.
 5. Degradation and improvement use `NN_25c AVG` and the configured acceptable variation.
 6. The report includes the required measurement statistics and top-20 main-pivot failure table.
-7. The output is a self-contained HTML file whenever the selected chart implementation permits it.
+7. The output is a self-contained HTML file with no external assets.
+8. Expected unavailable values render as blank, while unexpected calculation
+   failures render as bold red `ERROR`.
+9. Comparison degradation is negative and improvement is positive, with the
+   measurement definition controlling the direction.
 
 ## 9. Extensibility requirements
 
@@ -280,13 +300,35 @@ Copy and append the following section for each future version:
 - Include tests for missing values, coverage gaps, ties in the top-20 list, invalid `wcMargin`, invalid comparison values, and empty result sets.
 - Log enough context to diagnose a failed run without exposing sensitive workbook data unnecessarily.
 
-## 12. Open questions and assumptions to confirm
+## 12. Resolved v0.1 decisions and next-revision questions
 
-The following items were ambiguous in the original project description. This version uses the stated assumptions until they are confirmed:
+The original open questions are resolved for v0.1 as follows:
 
-1. **Sample filename:** The workbook path is supplied by the user through `excel_file_path`; the filename mismatch only affects which repository workbook should be used as the sample/default value. The original text names `./EXMAPLE.xlsm`, the repository contains `EXAMPLE.xlsm`, and `settings.json` points to `./REFERENCE.xlsm`.
-2. **Measurement definitions:** Each measurement should specify whether higher or lower values are better and how to calculate the main-versus-other delta. For `GAIN`, the current rule is `main - other`, where a positive value means the main pivot has higher gain and is improved.
-3. **Missing and invalid values:** Should `wcMargin` values that are blank, non-numeric, or non-finite be treated as coverage gaps, validation errors, or excluded data warnings?
-4. **Top-20 ties:** If multiple rows have the same `wcMargin` at rank 20, should the report include exactly 20 rows or all tied rows?
-5. **Failure-path identity:** The document assumes that the identifying columns are the required measurement columns and that their combined values uniquely identify a row. If they do not, what additional row key should be used?
-6. **AI output contract:** When model usage is enabled, should the AI return structured JSON that is rendered by the application, or may it return final HTML/Markdown directly?
+1. **Sample filename:** Runtime configuration controls the workbook path. The
+   repository sample is `EXAMPLE.xlsm`; the generated template uses the
+   placeholder path `./REFERENCE.xlsm`, which must be edited before running.
+2. **Measurement definitions:** Each measurement owns its comparison direction
+   and delta orientation. GAIN uses `main NN_25c AVG - comparison NN_25c AVG`,
+   with negative values meaning degradation and positive values meaning
+   improvement.
+3. **Missing and invalid values:** Blank, malformed, and non-finite required
+   pivot values are expected coverage gaps. They remain blank, are not
+   compliance failures, and are excluded only from affected metrics.
+4. **Calculation errors:** An unexpected calculation error is rendered as bold
+   red `ERROR`; it must never be silently converted to a blank.
+5. **Top-20 ties:** The report contains exactly 20 rows when at least 20
+   failures exist. Stable identifying fields and then worksheet row resolve
+   ties.
+6. **Failure-path identity:** The available SIGPATH identifying fields form the
+   displayed path. Duplicate combinations generate a warning, and worksheet
+   row numbers preserve traceability.
+7. **AI output contract:** AI generation is bypassed in v0.1. A future version
+   must define whether the model returns structured data for rendering or
+   final prose/markup.
+
+The next revision should decide:
+
+- the aggregation and port-group data contract;
+- supported non-GAIN measurement definitions and direction rules;
+- the model provider and structured AI output schema; and
+- whether optional visualizations or additional output formats are needed.

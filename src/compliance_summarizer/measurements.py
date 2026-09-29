@@ -22,17 +22,17 @@ class MeasurementDefinition:
         return main_value - comparison_value
 
     def classify(self, delta: float, tolerance: float) -> ComparisonClass:
-        oriented_delta = delta if self.higher_is_better else -delta
+        oriented_delta = self.oriented_delta(delta)
         if oriented_delta < -tolerance:
             return "degradation"
         if oriented_delta > tolerance:
             return "improvement"
         return "unchanged"
 
-    def degradation_magnitude(self, delta: float) -> float:
-        oriented_delta = delta if self.higher_is_better else -delta
-        return -oriented_delta
+    def oriented_delta(self, delta: float) -> float:
+        """Return a signed delta where degradation is negative."""
 
+        return delta if self.higher_is_better else -delta
 
 MEASUREMENTS = {
     "GAIN": MeasurementDefinition(

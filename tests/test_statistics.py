@@ -152,4 +152,4 @@ def test_degradation_extreme_and_failure_average_use_gain_direction(
 
     assert comparison.maximum_degradation == -2.0
     assert comparison.degradation_rate.numerator == 2
-    assert comparison.average_degradation_on_main_failures == pytest.approx(1.5)
+    assert comparison.average_degradation_on_main_failures == pytest.approx(-1.5)
