@@ -25,7 +25,8 @@ def test_report_is_self_contained_and_escapes_user_text(
     assert "<script>alert" not in rendered
     assert "&lt;script&gt;" in rendered
     assert "Result?" in rendered
-    assert "Top 20 DUT-1_VAR1 failures" in rendered
+    assert "Overall DUT-1_VAR1 failures" in rendered
+    assert "The top 20 failures are ordered" in rendered
 
 
 def test_cli_runs_end_to_end(tmp_path, workbook_factory, sample_rows, capsys):

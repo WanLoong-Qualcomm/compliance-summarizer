@@ -89,11 +89,16 @@ def test_grouped_report_follows_overall_report_and_omits_group_top_twenty(
 
     rendered = render_html(analyze(settings))
 
-    assert rendered.count("Top 20 DUT-1_VAR1 failures") == 1
-    assert rendered.index("Methodology and assumptions") < rendered.index(
-        "Grouped analysis: CHANNEL=1"
+    assert rendered.count("The top 20 failures are ordered") == 1
+    assert rendered.index("Overall pivot compliance") < rendered.index(
+        "Overall DUT-1_VAR1 failures"
     )
-    assert "Grouped analysis: CHANNEL=2" in rendered
+    assert rendered.index("Group: CHANNEL=1") < rendered.index(
+        "Group: CHANNEL=2"
+    ) < rendered.index("Methodology and assumptions")
+    assert "Group: CHANNEL=2" in rendered
+    assert rendered.count('>Pivot compliance</h2>') == 3
+    assert rendered.count('>DUT-1_VAR1 comparisons</h2>') == 3
     assert "Per-pivot compliance statistics" in rendered
     assert "Comparisons anchored on DUT-1_VAR1" in rendered
 
@@ -116,4 +121,4 @@ def test_skipped_group_warning_uses_existing_warning_list(
     assert "<h3>Warnings</h3>" in rendered
     assert "Group MEASPORT=P2" in rendered
     assert "grouped analysis was skipped as a coverage gap" in rendered
-    assert "Grouped analysis: MEASPORT=P2" not in rendered
+    assert "Group: MEASPORT=P2" not in rendered

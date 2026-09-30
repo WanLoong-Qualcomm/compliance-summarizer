@@ -68,26 +68,22 @@ def render_html(analysis: AnalysisResult) -> str:
             _section("Run configuration", _configuration_table(analysis)),
             _section("Coverage and validation", _coverage(analysis)),
             _section(
-                "Pivot compliance",
-                '<p class="method">A negative <code>wcMargin</code> is a failure. '
-                "Blank or invalid values are excluded from each pivot's failure-rate calculation.</p>"
-                + _pivot_table(analysis.statistics),
+                "Overall pivot compliance",
+                _pivot_compliance_content(analysis.statistics),
             ),
             _section(
-                f"{stats.main_pivot} comparisons",
-                f'<p class="method"><code>delta = {_escape(stats.main_pivot)} NN_25C AVG − comparison '
-                "NN_25C AVG</code>. For GAIN, negative is degradation and positive is "
-                "improvement. Values within the inclusive tolerance are unchanged.</p>"
-                + _comparison_table(analysis.statistics),
+                f"Overall {stats.main_pivot} comparisons",
+                _comparison_content(analysis.statistics),
             ),
             _section(
-                f"Top 20 {stats.main_pivot} failures",
-                f'<p class="method">Ordered by ascending {_escape(stats.main_pivot)} '
+                f"Overall {stats.main_pivot} failures",
+                f'<p class="method">The top 20 failures are ordered by ascending '
+                f'{_escape(stats.main_pivot)} '
                 "<code>wcMargin</code>. Missing comparison operands remain blank.</p>"
                 + _top_failure_table(analysis),
             ),
-            _section("Methodology and assumptions", _notes(analysis)),
             _grouped_sections(analysis),
+            _section("Methodology and assumptions", _notes(analysis)),
         )
     )
     return f"""<!doctype html>
@@ -172,7 +168,12 @@ def _configuration_table(analysis: AnalysisResult) -> str:
         ("Model bypass", settings.bypass_model),
         ("Background information", settings.background_information or ""),
     )
-    return _table(("Setting", "Value"), rows, "Validated runtime settings")
+    return _table(
+        ("Setting", "Value"),
+        rows,
+        "Validated runtime settings",
+        table_class="excel-summary-table",
+    )
 
 
 def _coverage(analysis: AnalysisResult) -> str:
@@ -193,6 +194,7 @@ def _coverage(analysis: AnalysisResult) -> str:
         ),
         rows,
         "Coverage-gap summary",
+        table_class="excel-summary-table",
     )
     warnings = (*analysis.parsed.warnings, *analysis.group_warnings)
     if warnings:
@@ -266,6 +268,23 @@ def _comparison_table(stats: MeasurementStatistics) -> str:
     )
 
 
+def _pivot_compliance_content(stats: MeasurementStatistics) -> str:
+    return (
+        '<p class="method">A negative <code>wcMargin</code> is a failure. '
+        "Blank or invalid values are excluded from each pivot's failure-rate calculation.</p>"
+        + _pivot_table(stats)
+    )
+
+
+def _comparison_content(stats: MeasurementStatistics) -> str:
+    return (
+        f'<p class="method"><code>delta = {_escape(stats.main_pivot)} NN_25C AVG '
+        "− comparison NN_25C AVG</code>. For GAIN, negative is degradation and positive is "
+        "improvement. Values within the inclusive tolerance are unchanged.</p>"
+        + _comparison_table(stats)
+    )
+
+
 def _grouped_sections(analysis: AnalysisResult) -> str:
     return "".join(
         _grouped_section(grouped)
@@ -277,15 +296,13 @@ def _grouped_section(grouped: GroupedAnalysis) -> str:
     stats = grouped.statistics
     group_label = format_group_key(grouped.group_key)
     content = (
-        '<p class="method">A negative <code>wcMargin</code> is a failure. '
-        "Blank or invalid values are excluded from each pivot's failure-rate calculation.</p>"
-        + _pivot_table(stats)
-        + f'<p class="method"><code>delta = {_escape(stats.main_pivot)} NN_25C AVG âˆ’ comparison '
-        "NN_25C AVG</code>. For GAIN, negative is degradation and positive is "
-        "improvement. Values within the inclusive tolerance are unchanged.</p>"
-        + _comparison_table(stats)
+        _section("Pivot compliance", _pivot_compliance_content(stats))
+        + _section(
+            f"{stats.main_pivot} comparisons",
+            _comparison_content(stats),
+        )
     )
-    return _section(f"Grouped analysis: {group_label}", content)
+    return _section(f"Group: {group_label}", content)
 
 
 def _top_failure_table(analysis: AnalysisResult) -> str:
