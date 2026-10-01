@@ -54,8 +54,7 @@ also accepted. The supported fields are:
 | `excel_file_path` | Existing `.xlsx` or `.xlsm` workbook. |
 | `compliance_sheet_name` | Worksheet containing the SIGPATH compliance table. |
 | `block` | Must be `SIGPATH`. |
-| `testnames` | Non-empty list selected from `GAIN`, `GAIN-DNL`, `GCIB`, `IP2ACS`, `IP2IB`, `IP3ACS`, `IP3IB`, `S11-LOW`, `S11-MID`, `S11-HIGH`, and `SSNFWSPURREMOVAL`. |
-| `acceptable_variation` | One finite, non-negative tolerance for every selected measurement. |
+| `testnames` | Non-empty list selected from `GAIN`, `GAIN-DNL`, `GCIB`, `GCTX`, `IP2ACS`, `IP2IB`, `IP3ACS`, `IP3IB`, `IP3TB`, `S11-LOW`, `S11-MID`, `S11-HIGH`, `SSNFWSPURREMOVAL`, `SSNF-FIRSTRBWSPURREMOVAL`, and `SSNF-LASTRBWSPURREMOVAL`. |
 | `background_information` | Optional text rendered in the run configuration. It is not sent to a model in the current scope. |
 | `main_pivot` | Exact pivot name discovered in row 2. It is the baseline for every comparison. |
 | `group_by` | Optional row-4 metadata fields or named schemes from `configs/groups.json`. `Result?`, `LL`, and `UL` cannot be used as source fields. Empty means overall analysis only. |
@@ -77,6 +76,25 @@ For example:
 ```
 
 Excluded rows are reported as a coverage note.
+
+Measurement definitions are loaded from `configs/test_definition.json`. Each
+definition contains a `delta_fn` and its finite, non-negative
+`acceptable_variation`:
+
+```json
+{
+  "GAIN-DNL": {
+    "delta_fn": "midpoint deviation",
+    "acceptable_variation": 0.2
+  }
+}
+```
+
+`delta_fn` accepts only `"this - other"`, `"other - this"`, or
+`"midpoint deviation"`. The latter uses the row's LL/UL midpoint and the same
+signed comparison convention. There is no expression parser or arbitrary code
+execution. Tolerances are defined alongside their measurements in this file,
+not in `JUI.json`.
 
 Named custom grouping schemes are loaded from `configs/groups.json`. Each
 scheme names a source metadata field, maps allowed values to group labels, and
@@ -151,12 +169,12 @@ is negative and improvement is positive:
 
 | Measurements | Better direction | Report-oriented delta |
 | --- | --- | --- |
-| `GAIN`, `IP2ACS`, `IP2IB`, `IP3ACS`, `IP3IB` | Higher | main value − comparison value |
-| `GCIB`, `S11-LOW`, `S11-MID`, `S11-HIGH`, `SSNFWSPURREMOVAL` | Lower | comparison value − main value |
+| `GAIN`, `IP2ACS`, `IP2IB`, `IP3ACS`, `IP3IB`, `IP3TB` | Higher | main value − comparison value |
+| `GCIB`, `GCTX`, `S11-LOW`, `S11-MID`, `S11-HIGH`, `SSNFWSPURREMOVAL`, `SSNF-FIRSTRBWSPURREMOVAL`, `SSNF-LASTRBWSPURREMOVAL` | Lower | comparison value − main value |
 | `GAIN-DNL` | Smaller midpoint deviation | comparison deviation − main deviation |
 
-An absolute oriented delta within the inclusive `acceptable_variation` is
-classified as unchanged.
+An absolute signed delta within the inclusive measurement-specific
+`acceptable_variation` is classified as unchanged.
 
 ## Grouped analysis
 

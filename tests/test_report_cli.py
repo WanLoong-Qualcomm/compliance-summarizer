@@ -70,7 +70,6 @@ def test_report_repeats_the_current_summary_for_each_measurement(
         tmp_path / "JUI.json",
         workbook,
         testnames=["GAIN", "GCIB"],
-        acceptable_variation={"GAIN": 0.2, "GCIB": 0.2},
     )
 
     rendered = render_html(analyze(settings))
@@ -104,6 +103,12 @@ def test_main_pivot_is_first_in_pivot_compliance_table(
     )[1]
 
     assert compliance_table.index(">DUT-2_VAR1</td>") < compliance_table.index(">DUT-1_VAR1</td>")
+
+    coverage_table = rendered.split(
+        "<caption>Coverage gaps</caption>",
+        1,
+    )[1]
+    assert coverage_table.index(">DUT-2_VAR1</td>") < coverage_table.index(">DUT-1_VAR1</td>")
 
 
 def test_cli_runs_end_to_end(tmp_path, workbook_factory, sample_rows, capsys):

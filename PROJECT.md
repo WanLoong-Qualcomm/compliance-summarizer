@@ -105,8 +105,6 @@ application does not save or modify the workbook and does not execute macros.
 - `compliance_sheet_name`: worksheet name;
 - `block`: currently required to be `SIGPATH`;
 - `testnames`: one or more unique supported measurements;
-- `acceptable_variation`: exactly one finite non-negative number per selected
-  measurement;
 - `background_information`: optional display text;
 - `main_pivot`: non-empty exact pivot name, validated against the workbook;
 - `group_by`: zero or more unique discovered metadata fields or named custom
@@ -122,13 +120,14 @@ settings files and default to `false` when omitted.
 
 Supported measurements are:
 
-`GAIN`, `GAIN-DNL`, `GCIB`, `IP2ACS`, `IP2IB`, `IP3ACS`, `IP3IB`, `S11-LOW`,
-`S11-MID`, `S11-HIGH`, and `SSNFWSPURREMOVAL`.
+`GAIN`, `GAIN-DNL`, `GCIB`, `GCTX`, `IP2ACS`, `IP2IB`, `IP3ACS`, `IP3IB`,
+`IP3TB`, `S11-LOW`, `S11-MID`, `S11-HIGH`, `SSNFWSPURREMOVAL`,
+`SSNF-FIRSTRBWSPURREMOVAL`, and `SSNF-LASTRBWSPURREMOVAL`.
 
 Measurement names and configurable metadata fields are normalized for
 case/whitespace lookup. Unknown settings fields, missing settings fields,
 duplicate measurements, duplicate grouping fields, unsupported measurements,
-invalid tolerances, and invalid paths are rejected before analysis.
+invalid definition tolerances, and invalid paths are rejected before analysis.
 
 ### 5.1 Optional row filters
 
@@ -175,9 +174,15 @@ Blank values and values that match no allowed value use `default`.
 
 ## 6. Measurement definitions and statistics
 
-The registry in `measurements.py` defines the compliance margin statistic,
-comparison statistic preference, direction, and any value transformation for
-each measurement.
+The runtime definitions loaded from `configs/test_definition.json` define the
+compliance margin statistic, comparison statistic preference, signed delta
+function, and acceptable variation for each measurement.
+
+`delta_fn` is one of the exact string constants `"this - other"`,
+`"other - this"`, or `"midpoint deviation"`. The latter uses the row's LL/UL
+midpoint. The application dispatches these constants directly; it does not
+parse or execute arbitrary expressions. Tolerances are defined in the same
+measurement-definition file rather than in `JUI.json`.
 
 ### 6.1 Compliance statistics
 
@@ -213,8 +218,8 @@ improvement is positive:
 
 | Measurements | Better direction | Report-oriented delta |
 | --- | --- | --- |
-| `GAIN`, `IP2ACS`, `IP2IB`, `IP3ACS`, `IP3IB` | Higher | main value − comparison value |
-| `GCIB`, `S11-LOW`, `S11-MID`, `S11-HIGH`, `SSNFWSPURREMOVAL` | Lower | comparison value − main value |
+| `GAIN`, `IP2ACS`, `IP2IB`, `IP3ACS`, `IP3IB`, `IP3TB` | Higher | main value − comparison value |
+| `GCIB`, `GCTX`, `S11-LOW`, `S11-MID`, `S11-HIGH`, `SSNFWSPURREMOVAL`, `SSNF-FIRSTRBWSPURREMOVAL`, `SSNF-LASTRBWSPURREMOVAL` | Lower | comparison value − main value |
 | `GAIN-DNL` | Smaller midpoint deviation | comparison deviation − main deviation |
 
 For `GAIN-DNL`, each comparison value is transformed to the absolute distance
@@ -230,7 +235,7 @@ For every comparison pivot, the structured result contains:
 - main-only count, where the main comparison value is valid but the other
   comparison value is not.
 
-Only valid pairs enter comparison metrics. An absolute oriented delta less than
+Only valid pairs enter comparison metrics. An absolute signed delta less than
 or equal to the configured tolerance is unchanged. Rates with no valid pairs
 have no percentage value and render blank in HTML. The HTML report displays
 percentages only; pair counts remain available in the structured result.

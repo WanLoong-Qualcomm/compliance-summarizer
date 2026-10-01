@@ -176,10 +176,9 @@ def _case_statistics(
         else:
             try:
                 delta = definition.delta(main_average, comparison)
-                oriented_delta = definition.oriented_delta(delta)
-                if not isfinite(delta) or not isfinite(oriented_delta):
+                if not isfinite(delta):
                     raise ValueError("non-finite comparison delta")
-                deltas[pivot] = oriented_delta
+                deltas[pivot] = delta
             except Exception:
                 deltas[pivot] = CALCULATION_ERROR
     margin = _value(case, main_pivot, definition.margin_statistic)
@@ -199,7 +198,7 @@ def _comparison_statistics(
     tolerance: float,
     definition: MeasurementDefinition,
 ) -> ComparisonStatistics:
-    paired: list[tuple[float, float, str]] = []
+    paired: list[tuple[float, str]] = []
     main_only_count = 0
     calculation_error = False
     for case in parsed.cases:
@@ -210,28 +209,25 @@ def _comparison_statistics(
         if main is not None and comparison is not None:
             try:
                 delta = definition.delta(main, comparison)
-                oriented_delta = definition.oriented_delta(delta)
-                if not isfinite(delta) or not isfinite(oriented_delta):
+                if not isfinite(delta):
                     raise ValueError("non-finite comparison delta")
-                paired.append(
-                    (delta, oriented_delta, definition.classify(delta, tolerance))
-                )
+                paired.append((delta, definition.classify(delta, tolerance)))
             except Exception:
                 calculation_error = True
 
     degradation = [
         delta
-        for _, delta, classification in paired
+        for delta, classification in paired
         if classification == "degradation"
     ]
     unchanged = [
         delta
-        for _, delta, classification in paired
+        for delta, classification in paired
         if classification == "unchanged"
     ]
     improvement = [
         delta
-        for _, delta, classification in paired
+        for delta, classification in paired
         if classification == "improvement"
     ]
 

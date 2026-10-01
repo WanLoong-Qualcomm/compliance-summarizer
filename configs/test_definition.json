@@ -1,0 +1,62 @@
+{
+  "GAIN": {
+    "delta_fn": "this - other",
+    "acceptable_variation": 0.2
+  },
+  "GAIN-DNL": {
+    "delta_fn": "midpoint deviation",
+    "acceptable_variation": 0.2
+  },
+  "GCIB": {
+    "delta_fn": "other - this",
+    "acceptable_variation": 0.1
+  },
+  "GCTX": {
+    "delta_fn": "other - this",
+    "acceptable_variation": 0.2
+  },
+  "IP2ACS": {
+    "delta_fn": "this - other",
+    "acceptable_variation": 0.2
+  },
+  "IP2IB": {
+    "delta_fn": "this - other",
+    "acceptable_variation": 0.2
+  },
+  "IP3ACS": {
+    "delta_fn": "this - other",
+    "acceptable_variation": 0.2
+  },
+  "IP3IB": {
+    "delta_fn": "this - other",
+    "acceptable_variation": 0.2
+  },
+  "IP3TB": {
+    "delta_fn": "this - other",
+    "acceptable_variation": 0.2
+  },
+  "S11-LOW": {
+    "delta_fn": "other - this",
+    "acceptable_variation": 0.2
+  },
+  "S11-MID": {
+    "delta_fn": "other - this",
+    "acceptable_variation": 0.2
+  },
+  "S11-HIGH": {
+    "delta_fn": "other - this",
+    "acceptable_variation": 0.2
+  },
+  "SSNFWSPURREMOVAL": {
+    "delta_fn": "other - this",
+    "acceptable_variation": 0.2
+  },
+  "SSNF-FIRSTRBWSPURREMOVAL": {
+    "delta_fn": "other - this",
+    "acceptable_variation": 0.2
+  },
+  "SSNF-LASTRBWSPURREMOVAL": {
+    "delta_fn": "other - this",
+    "acceptable_variation": 0.2
+  }
+}

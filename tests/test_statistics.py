@@ -109,6 +109,7 @@ def test_mean_has_priority_when_both_comparison_statistics_are_present(
     ("measurement", "main_value", "comparison_value"),
     [
         ("GCIB", 1.0, 2.0),
+        ("GCTX", 1.0, 2.0),
         ("S11-LOW", 1.0, 2.0),
         ("S11-MID", 1.0, 2.0),
         ("S11-HIGH", 1.0, 2.0),
@@ -116,7 +117,10 @@ def test_mean_has_priority_when_both_comparison_statistics_are_present(
         ("IP2IB", 2.0, 1.0),
         ("IP3ACS", 2.0, 1.0),
         ("IP3IB", 2.0, 1.0),
+        ("IP3TB", 2.0, 1.0),
         ("SSNFWSPURREMOVAL", 1.0, 2.0),
+        ("SSNF-FIRSTRBWSPURREMOVAL", 1.0, 2.0),
+        ("SSNF-LASTRBWSPURREMOVAL", 1.0, 2.0),
     ],
 )
 def test_measurement_comparison_direction(

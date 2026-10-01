@@ -177,7 +177,6 @@ def write_settings(
         "compliance_sheet_name": "Combined",
         "block": "SIGPATH",
         "testnames": ["GAIN"],
-        "acceptable_variation": {"GAIN": 0.2},
         "background_information": background,
         "main_pivot": main_pivot,
         "group_by": [],

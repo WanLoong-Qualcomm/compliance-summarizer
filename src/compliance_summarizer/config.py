@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 from copy import deepcopy
 from json import JSONDecodeError
-from math import isfinite
 from pathlib import Path
 
 from .errors import ConfigurationError
@@ -19,7 +18,6 @@ DEFAULT_SETTINGS: dict[str, object] = {
     "compliance_sheet_name": "Combined",
     "block": "SIGPATH",
     "testnames": ["GAIN"],
-    "acceptable_variation": {"GAIN": 0.2},
     "background_information": "",
     "main_pivot": "",
     "group_by": [],
@@ -273,32 +271,6 @@ def load_settings(path: str | Path = "JUI.json") -> Settings:
         normalized_measurements.append(measurement)
     normalized_measurements_tuple = tuple(normalized_measurements)
 
-    variation_value = payload["acceptable_variation"]
-    if (
-        type(variation_value) is not dict
-        or set(variation_value) != set(normalized_measurements_tuple)
-    ):
-        raise ConfigurationError(
-            "'acceptable_variation' must contain exactly one value for each "
-            "selected measurement: "
-            + ", ".join(normalized_measurements_tuple)
-            + "."
-        )
-    normalized_variation: dict[str, float] = {}
-    for measurement in normalized_measurements_tuple:
-        value = variation_value[measurement]
-        if (
-            isinstance(value, bool)
-            or not isinstance(value, (int, float))
-            or not isfinite(value)
-            or value < 0
-        ):
-            raise ConfigurationError(
-                f"'acceptable_variation.{measurement}' must be a finite "
-                "non-negative number."
-            )
-        normalized_variation[measurement] = float(value)
-
     background = payload["background_information"]
     if not isinstance(background, str):
         raise ConfigurationError("'background_information' must be a string.")
@@ -347,7 +319,6 @@ def load_settings(path: str | Path = "JUI.json") -> Settings:
         compliance_sheet_name=sheet,
         block=block,
         testnames=normalized_measurements_tuple,
-        acceptable_variation=normalized_variation,
         background_information=background,
         main_pivot=main_pivot,
         group_by=tuple(normalized_group_by),

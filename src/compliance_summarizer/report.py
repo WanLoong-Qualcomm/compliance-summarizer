@@ -11,7 +11,11 @@ from typing import Iterable, Sequence
 
 from .errors import ReportError
 from .grouping import format_group_key
-from .measurements import get_measurement_definition
+from .measurements import (
+    MIDPOINT_DEVIATION,
+    THIS_MINUS_OTHER,
+    get_measurement_definition,
+)
 from .models import (
     CALCULATION_ERROR,
     AnalysisResult,
@@ -211,7 +215,8 @@ def _configuration_table(analysis: AnalysisResult) -> str:
         (
             "Acceptable variation",
             "; ".join(
-                f"{measurement}: {settings.acceptable_variation[measurement]}"
+                f"{measurement}: "
+                f"{get_measurement_definition(measurement).acceptable_variation}"
                 for measurement in settings.testnames
             ),
         ),
@@ -234,7 +239,16 @@ def _configuration_table(analysis: AnalysisResult) -> str:
 
 def _coverage(item: MeasurementAnalysis) -> str:
     rows = []
-    for coverage in item.parsed.coverage:
+    coverage_items = tuple(
+        coverage
+        for coverage in item.parsed.coverage
+        if coverage.pivot == item.statistics.main_pivot
+    ) + tuple(
+        coverage
+        for coverage in item.parsed.coverage
+        if coverage.pivot != item.statistics.main_pivot
+    )
+    for coverage in coverage_items:
         rows.append(
             (
                 coverage.pivot,
@@ -388,19 +402,15 @@ def _pivot_compliance_content(stats: MeasurementStatistics) -> str:
 
 def _comparison_content(stats: MeasurementStatistics) -> str:
     definition = get_measurement_definition(stats.measurement)
-    if definition.requires_limits:
-        formula = (
-            "comparison-pivot deviation − main-pivot deviation"
-        )
+    formula = definition.formula_text
+    if definition.delta_fn == MIDPOINT_DEVIATION:
         explanation = (
             "Each deviation is the absolute distance from the row's LL/UL midpoint; "
             "smaller deviation is better."
         )
-    elif definition.higher_is_better:
-        formula = "main-pivot value − comparison-pivot value"
+    elif definition.delta_fn == THIS_MINUS_OTHER:
         explanation = "Higher values are better."
     else:
-        formula = "comparison-pivot value − main-pivot value"
         explanation = "Lower values are better."
     return (
         f'<p class="method"><code>delta = {_escape(formula)}</code>. '

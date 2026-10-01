@@ -22,8 +22,8 @@ current scope.
 - Relative workbook paths resolve against the settings file.
 - Only the `SIGPATH` block is accepted.
 - The supported measurement registry is validated before processing.
-- Every selected measurement requires exactly one finite, non-negative
-  `acceptable_variation` value.
+- Measurement-specific finite, non-negative `acceptable_variation` values are
+  loaded from `configs/test_definition.json`.
 - `group_by` entries are normalized and deduplicated. Entries may be discovered
   metadata fields or named schemes from `configs/groups.json`; custom scheme
   source fields are checked against the source-result/limit exclusions.
@@ -52,10 +52,17 @@ current scope.
 
 ### 3. Measurement calculations
 
-The registry in `measurements.py` currently supports:
+The definitions in `configs/test_definition.json`, loaded by
+`measurements.py`, currently support:
 
-`GAIN`, `GAIN-DNL`, `GCIB`, `IP2ACS`, `IP2IB`, `IP3ACS`, `IP3IB`, `S11-LOW`,
-`S11-MID`, `S11-HIGH`, and `SSNFWSPURREMOVAL`.
+`GAIN`, `GAIN-DNL`, `GCIB`, `GCTX`, `IP2ACS`, `IP2IB`, `IP3ACS`, `IP3IB`,
+`IP3TB`, `S11-LOW`, `S11-MID`, `S11-HIGH`, `SSNFWSPURREMOVAL`,
+`SSNF-FIRSTRBWSPURREMOVAL`, and `SSNF-LASTRBWSPURREMOVAL`.
+
+The JSON file is the source of truth for signed comparison functions and
+measurement-specific tolerances. `delta_fn` is one of the exact constants
+`"this - other"`, `"other - this"`, or `"midpoint deviation"`; the application
+dispatches these values directly without an expression parser.
 
 The calculator implements:
 

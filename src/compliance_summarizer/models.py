@@ -16,7 +16,6 @@ class Settings:
     compliance_sheet_name: str
     block: str
     testnames: tuple[str, ...]
-    acceptable_variation: dict[str, float]
     background_information: str
     main_pivot: str
     group_by: tuple[str, ...]

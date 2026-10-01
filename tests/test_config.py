@@ -24,7 +24,6 @@ def test_load_settings_resolves_workbook_relative_to_settings(
 
     assert settings.excel_file_path == workbook.resolve()
     assert settings.testnames == ("GAIN",)
-    assert settings.acceptable_variation == {"GAIN": 0.2}
     assert settings.include_group_failures is False
     assert settings.include_group_marginal_passes is False
 
@@ -34,7 +33,7 @@ def test_load_settings_resolves_workbook_relative_to_settings(
     [
         ({"block": "OTHER"}, "SIGPATH"),
         ({"testnames": []}, "testnames.*GAIN"),
-        ({"acceptable_variation": {"GAIN": -0.1}}, "non-negative"),
+        ({"acceptable_variation": {"GAIN": 0.2}}, "Unsupported.*acceptable_variation"),
         ({"group_by": ["Result?"]}, "Unsupported.*group_by"),
         ({"include_group_failures": "yes"}, "include_group_failures.*boolean"),
         (
@@ -123,17 +122,11 @@ def test_load_settings_accepts_multiple_supported_measurements(
         tmp_path / "JUI.json",
         workbook,
         testnames=["gain", "GCIB", "S11-low"],
-        acceptable_variation={"GAIN": 0.2, "GCIB": 0.3, "S11-LOW": 0.1},
     )
 
     settings = load_settings(path)
 
     assert settings.testnames == ("GAIN", "GCIB", "S11-LOW")
-    assert settings.acceptable_variation == {
-        "GAIN": 0.2,
-        "GCIB": 0.3,
-        "S11-LOW": 0.1,
-    }
 
 
 def test_group_by_rejects_duplicate_fields(tmp_path, workbook_factory, sample_rows):

@@ -7,6 +7,7 @@ from pathlib import Path
 
 from .config import load_custom_groups, load_settings, load_test_filters
 from .grouping import calculate_grouped_analyses
+from .measurements import get_measurement_definition
 from .models import AnalysisResult, MeasurementAnalysis
 from .report import write_html_report
 from .statistics import calculate_measurement_statistics
@@ -26,16 +27,19 @@ def analyze(settings_path: str | Path = "JUI.json") -> AnalysisResult:
     measurement_analyses = []
     for parsed in parsed_measurements:
         measurement = parsed.measurement
+        acceptable_variation = get_measurement_definition(
+            measurement
+        ).acceptable_variation
         statistics = calculate_measurement_statistics(
             parsed,
             settings.main_pivot,
-            settings.acceptable_variation[measurement],
+            acceptable_variation,
         )
         grouped_analyses, group_warnings = calculate_grouped_analyses(
             parsed,
             settings.group_by,
             settings.main_pivot,
-            settings.acceptable_variation[measurement],
+            acceptable_variation,
             custom_groups=custom_groups,
             include_failures=settings.include_group_failures,
             include_marginal_passes=settings.include_group_marginal_passes,
