@@ -116,6 +116,12 @@ MEASUREMENTS = {
         comparison_statistics=("MEAN", "NN_25C AVG"),
         higher_is_better=False,
     ),
+    "SSNFWSPURREMOVAL": MeasurementDefinition(
+        name="SSNFWSPURREMOVAL",
+        margin_statistic="wcMargin",
+        comparison_statistics=("MEAN", "NN_25C AVG"),
+        higher_is_better=False,
+    ),
 }
 
 

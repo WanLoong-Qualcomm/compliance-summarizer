@@ -62,9 +62,13 @@ def write_html_report(
 
 
 def render_html(analysis: AnalysisResult) -> str:
-    body = "".join(
-        _measurement_sections(analysis, item)
-        for item in analysis.measurement_analyses
+    body = (
+        _section("Run configuration", _configuration_table(analysis))
+        + "".join(
+            _measurement_sections(analysis, item)
+            for item in analysis.measurement_analyses
+        )
+        + _section("Methodology and assumptions", _notes(analysis))
     )
     measurement_title = ", ".join(
         item.measurement for item in analysis.measurement_analyses
@@ -144,7 +148,6 @@ def _measurement_sections(
         + "".join(
             (
             _hero(analysis, item, main.failure_rate),
-            _section("Run configuration", _configuration_table(analysis, item)),
             _section("Coverage and validation", _coverage(item)),
             _section(
                 "Overall pivot compliance",
@@ -169,7 +172,6 @@ def _measurement_sections(
                 + _top_pass_table(analysis, item),
             ),
             _grouped_sections(item),
-            _section("Methodology and assumptions", _notes(analysis)),
             )
         )
         + "</article>"
@@ -196,21 +198,20 @@ def _hero(
 </div></header>"""
 
 
-def _configuration_table(
-    analysis: AnalysisResult,
-    item: MeasurementAnalysis,
-) -> str:
+def _configuration_table(analysis: AnalysisResult) -> str:
     settings = analysis.settings
-    stats = item.statistics
     rows = (
         ("Workbook", settings.excel_file_path),
         ("Sheet", settings.compliance_sheet_name),
         ("Block", settings.block),
-        ("Measurement", stats.measurement),
+        ("Testnames", ", ".join(settings.testnames)),
         ("Baseline", settings.main_pivot),
         (
-            f"{stats.measurement} acceptable variation",
-            settings.acceptable_variation[stats.measurement],
+            "Acceptable variation",
+            "; ".join(
+                f"{measurement}: {settings.acceptable_variation[measurement]}"
+                for measurement in settings.testnames
+            ),
         ),
         ("Group by", ", ".join(settings.group_by) or "(none)"),
         ("Model bypass", settings.bypass_model),

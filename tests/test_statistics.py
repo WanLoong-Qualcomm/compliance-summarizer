@@ -116,6 +116,7 @@ def test_mean_has_priority_when_both_comparison_statistics_are_present(
         ("IP2IB", 2.0, 1.0),
         ("IP3ACS", 2.0, 1.0),
         ("IP3IB", 2.0, 1.0),
+        ("SSNFWSPURREMOVAL", 1.0, 2.0),
     ],
 )
 def test_measurement_comparison_direction(

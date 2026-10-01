@@ -50,7 +50,7 @@ The current settings fields are:
 | `excel_file_path` | Existing `.xlsx` or `.xlsm`, relative to the settings file or absolute. |
 | `compliance_sheet_name` | Worksheet containing the compliance table. |
 | `block` | Must be `SIGPATH`. |
-| `testnames` | Non-empty list selected from `GAIN`, `GAIN-DNL`, `GCIB`, `IP2ACS`, `IP2IB`, `IP3ACS`, `IP3IB`, `S11-LOW`, `S11-MID`, and `S11-HIGH`. |
+| `testnames` | Non-empty list selected from `GAIN`, `GAIN-DNL`, `GCIB`, `IP2ACS`, `IP2IB`, `IP3ACS`, `IP3IB`, `S11-LOW`, `S11-MID`, `S11-HIGH`, and `SSNFWSPURREMOVAL`. |
 | `acceptable_variation` | One finite, non-negative value for every selected measurement. |
 | `background_information` | Optional report context string. |
 | `main_pivot` | Exact pivot name discovered in row 2. |
@@ -102,11 +102,12 @@ blank.
 midpoint. It uses `other deviation - main deviation`, because smaller
 deviation is better. Rows with missing or invalid `LL`/`UL` values generate a
 coverage warning and are excluded from affected comparisons. `GCIB` and the
-three `S11` measurements use `other - main` because lower is better. `IP2ACS`,
-`IP2IB`, `IP3ACS`, and `IP3IB` use `main - other` because higher is better.
+the three `S11` measurements and `SSNFWSPURREMOVAL` use `other - main`
+because lower is better. `IP2ACS`, `IP2IB`, `IP3ACS`, and `IP3IB` use
+`main - other` because higher is better.
 
-The report is a standalone HTML file. Each selected measurement receives the
-following complete summary:
+The report is a standalone HTML file. Run configuration appears once at the
+start, followed by a complete summary for each selected measurement:
 
 - coverage and validation warnings;
 - per-pivot compliance statistics based on `wcMargin`;
@@ -114,7 +115,7 @@ following complete summary:
 - an Excel-style top-20 main-pivot failure table;
 - an Excel-style top-5 main-pivot pass-case table, ordered by ascending `wcMargin`;
 - grouped per-pivot statistics and comparisons when `group_by` is non-empty; and
-- methodology and assumptions.
+- methodology and assumptions once at the end of the report.
 
 Grouped reports use the same compact tables and percentage-only presentation as
 the overall report. They exclude the top-20 failure table. Blank grouping values

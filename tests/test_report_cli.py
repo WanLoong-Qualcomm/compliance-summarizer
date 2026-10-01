@@ -77,10 +77,13 @@ def test_report_repeats_the_current_summary_for_each_measurement(
 
     assert rendered.count("<h1>GAIN compliance summary</h1>") == 1
     assert rendered.count("<h1>GCIB compliance summary</h1>") == 1
-    assert rendered.count(">Run configuration</h2>") == 2
+    assert rendered.count(">Run configuration</h2>") == 1
+    assert rendered.count(">Methodology and assumptions</h2>") == 1
     assert rendered.count(">Overall pivot compliance</h2>") == 2
     assert rendered.count('<article class="measurement-summary">') == 2
     assert ".measurement-summary + .measurement-summary" in rendered
+    assert rendered.index(">Run configuration</h2>") < rendered.index(">GAIN compliance summary</h1>")
+    assert rendered.index(">Methodology and assumptions</h2>") > rendered.index(">GCIB compliance summary</h1>")
 
 
 def test_main_pivot_is_first_in_pivot_compliance_table(

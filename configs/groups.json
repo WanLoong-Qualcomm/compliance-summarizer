@@ -1,10 +1,20 @@
 {
-    "sigpath-blocks": {
-        "column": "measport",
+    "sigpath-blocks":
+    {
+        "field": "MEASPORT",
         "groups": {
-            "LB" : [],
-            "MHB": [],
+            "LB" : ["L1", "L2", "L3", "L4"],
+            "MHB": ["MH1", "MH2", "MH3", "MH4", "MH5", "MH6", "MHM1", "MHM2"],
             "UNA": ["UNA", "UNAM"]
-        }
+        },
+        "default" : "OTHER"
+    },
+    "over-voltage-temperature":
+    {
+        "field": "TEMP",
+        "groups" {
+            "25c" : [25],
+        },
+        "default" : "OVT"
     }
 }

@@ -429,7 +429,8 @@ The workflow supports the following SIGPATH measurements:
 - `GCIB`;
 - `IP2ACS` and `IP2IB`;
 - `IP3ACS` and `IP3IB`; and
-- `S11-LOW`, `S11-MID`, and `S11-HIGH`.
+- `S11-LOW`, `S11-MID`, and `S11-HIGH`; and
+- `SSNFWSPURREMOVAL`.
 
 The configured measurements are loaded in one workbook pass and each receives
 an independent copy of the current report summary. All measurements use the
@@ -446,5 +447,6 @@ to `IQ` without changing the workbook schema or the main settings contract.
 from the row-level `LL`/`UL` midpoint. Because smaller deviation is better,
 its oriented comparison is `other deviation - main deviation`. Missing or
 invalid `LL`/`UL` values produce a coverage warning and are excluded only from
-affected comparisons. `GCIB` and the `S11` measurements use `other - main`;
-the `IP2` and `IP3` measurements use `main - other`.
+affected comparisons. `GCIB`, the `S11` measurements, and
+`SSNFWSPURREMOVAL` use `other - main`; the `IP2` and `IP3` measurements use
+`main - other`.
