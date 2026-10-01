@@ -85,6 +85,7 @@ The report is a standalone HTML file with these sections:
 - per-pivot compliance statistics based on `wcMargin`;
 - main-pivot comparisons using signed degradation and improvement values;
 - an Excel-style top-20 main-pivot failure table;
+- an Excel-style top-5 main-pivot pass-case table, ordered by ascending `wcMargin`;
 - grouped per-pivot statistics and comparisons when `group_by` is non-empty; and
 - methodology and assumptions.
 

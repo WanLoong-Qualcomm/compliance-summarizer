@@ -134,10 +134,9 @@ Calculate independently for each pivot:
 - worst `wcMargin`;
 - the failure path, meaning the complete combination of identifying columns for the main pivot's worst failure;
 - the top 20 main-pivot failure cases, ordered by ascending main-pivot `wcMargin` so the most negative value appears first;
-- the original compliance fields for each top-20 case; and
-- the signed delta between the main pivot and every other pivot for the top-20 cases, using `NN_25c AVG` and the measurement-specific comparison direction. Degradation is negative and improvement is positive.
-
-For main-pivot failure cases, also calculate the degraded-failure count, maximum degradation, and average degradation between the main pivot and every other pivot. These values are signed, so degradation is negative. The definition of degradation direction is measurement-specific and must be documented in the measurement definition.
+- the top 5 main-pivot passing cases, ordered by ascending non-negative main-pivot `wcMargin` so the cases closest to the compliance limit appear first;
+- the original compliance fields for each ranked case; and
+- the signed delta between the main pivot and every other pivot for each ranked failure and pass case, using `NN_25c AVG` and the measurement-specific comparison direction. Degradation is negative and improvement is positive.
 
 ### 6.2 Measurement comparison statistics
 
@@ -148,9 +147,12 @@ For every other pivot, calculate the comparison against the main pivot:
 - improvement rate;
 - maximum degradation; and
 - maximum improvement;
-- degraded main-failure count;
-- maximum degradation on main failures; and
-- average degradation on main failures.
+- average degradation; and
+- average improvement.
+
+Average degradation and improvement are calculated across all valid paired
+rows classified in the corresponding category. The values are signed, so
+degradation is negative and improvement is positive.
 
 Classification must account for the configured acceptable variation. In general, an absolute delta within the tolerance is unchanged; deltas outside the tolerance are classified as degradation or improvement according to the selected measurement's comparison direction.
 

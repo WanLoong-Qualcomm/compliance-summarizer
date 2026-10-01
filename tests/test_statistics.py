@@ -26,6 +26,8 @@ def test_compliance_uses_margin_and_comparison_uses_paired_averages(
     assert comparison.improvement_rate.numerator == 1
     assert comparison.degradation_rate.numerator == 0
     assert comparison.maximum_improvement == 0.5
+    assert comparison.average_improvement == 0.5
+    assert comparison.average_degradation is None
     assert len(result.top_failure_cases) == 2
     assert result.top_failure_cases[1].deltas["DUT-2_VAR1"] is None
 
@@ -82,6 +84,46 @@ def test_top_twenty_is_exact_and_ties_are_stable(workbook_factory, sample_rows):
         6,
         7,
     ]
+
+
+def test_top_five_passes_are_ordered_by_ascending_margin(
+    workbook_factory, sample_rows
+):
+    template = sample_rows[0]
+    margins = {
+        1: 0.4,
+        2: 0.0,
+        3: 0.2,
+        4: 1.2,
+        5: 0.1,
+        6: 0.8,
+    }
+    rows = []
+    for channel in reversed(tuple(margins)):
+        rows.append(
+            {
+                **template,
+                "CHANNEL": channel,
+                "DUT-1_VAR1": {
+                    **template["DUT-1_VAR1"],
+                    "wcMargin": margins[channel],
+                },
+                "DUT-2_VAR1": dict(template["DUT-2_VAR1"]),
+            }
+        )
+
+    parsed = load_measurement(workbook_factory(rows), "Combined")
+    result = calculate_measurement_statistics(parsed, "DUT-1_VAR1", 0.2)
+
+    assert len(result.top_pass_cases) == 5
+    assert [item.case.fixed_values["CHANNEL"] for item in result.top_pass_cases] == [
+        2,
+        5,
+        3,
+        1,
+        6,
+    ]
+    assert all(item.main_wc_margin >= 0 for item in result.top_pass_cases)
 
 
 def test_main_pivot_without_valid_margin_is_irrecoverable(
@@ -152,4 +194,5 @@ def test_degradation_extreme_and_failure_average_use_gain_direction(
 
     assert comparison.maximum_degradation == -2.0
     assert comparison.degradation_rate.numerator == 2
-    assert comparison.average_degradation_on_main_failures == pytest.approx(-1.5)
+    assert comparison.average_degradation == pytest.approx(-1.5)
+    assert comparison.average_improvement is None

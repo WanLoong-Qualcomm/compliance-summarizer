@@ -24,7 +24,7 @@ def calculate_measurement_statistics(
     main_pivot: str,
     acceptable_variation: float,
     *,
-    include_top_failure_cases: bool = True,
+    include_ranked_cases: bool = True,
 ) -> MeasurementStatistics:
     """Calculate deterministic statistics without consulting source ``Result?``."""
 
@@ -53,10 +53,16 @@ def calculate_measurement_statistics(
         if _value(case, main_pivot, definition.margin_statistic) is not None
         and _value(case, main_pivot, definition.margin_statistic) < 0
     )
+    main_passes = tuple(
+        case
+        for case in parsed.cases
+        if _value(case, main_pivot, definition.margin_statistic) is not None
+        and _value(case, main_pivot, definition.margin_statistic) >= 0
+    )
     comparison_names = tuple(
         pivot for pivot in parsed.schema.pivot_names if pivot != main_pivot
     )
-    if include_top_failure_cases:
+    if include_ranked_cases:
         ordered_failures = sorted(
             main_failures,
             key=lambda case: (
@@ -66,18 +72,30 @@ def calculate_measurement_statistics(
             ),
         )
         top_failure_cases = tuple(
-            _failure_case(case, main_pivot, comparison_names, definition)
+            _case_statistics(case, main_pivot, comparison_names, definition)
             for case in ordered_failures[:20]
+        )
+        ordered_passes = sorted(
+            main_passes,
+            key=lambda case: (
+                _value(case, main_pivot, definition.margin_statistic),
+                _identity_sort_key(case.identity),
+                case.worksheet_row,
+            ),
+        )
+        top_pass_cases = tuple(
+            _case_statistics(case, main_pivot, comparison_names, definition)
+            for case in ordered_passes[:5]
         )
     else:
         top_failure_cases = ()
+        top_pass_cases = ()
     comparisons = tuple(
         _comparison_statistics(
             parsed,
             main_pivot,
             comparison_pivot,
             acceptable_variation,
-            main_failures,
             definition,
         )
         for comparison_pivot in comparison_names
@@ -91,6 +109,7 @@ def calculate_measurement_statistics(
         pivot_statistics=pivot_statistics,
         comparisons=comparisons,
         top_failure_cases=top_failure_cases,
+        top_pass_cases=top_pass_cases,
     )
 
 
@@ -126,7 +145,7 @@ def _pivot_main_statistics(
     )
 
 
-def _failure_case(
+def _case_statistics(
     case: ComplianceCase,
     main_pivot: str,
     comparison_names: tuple[str, ...],
@@ -164,7 +183,6 @@ def _comparison_statistics(
     main_pivot: str,
     comparison_pivot: str,
     tolerance: float,
-    main_failures: tuple[ComplianceCase, ...],
     definition: MeasurementDefinition,
 ) -> ComparisonStatistics:
     paired: list[tuple[float, float, str]] = []
@@ -203,22 +221,6 @@ def _comparison_statistics(
         if classification == "improvement"
     ]
 
-    failure_degradations: list[float] = []
-    for case in main_failures:
-        main = _value(case, main_pivot, definition.comparison_statistic)
-        comparison = _value(case, comparison_pivot, definition.comparison_statistic)
-        if main is None or comparison is None:
-            continue
-        try:
-            delta = definition.delta(main, comparison)
-            oriented_delta = definition.oriented_delta(delta)
-            if not isfinite(delta) or not isfinite(oriented_delta):
-                raise ValueError("non-finite comparison delta")
-            if definition.classify(delta, tolerance) == "degradation":
-                failure_degradations.append(oriented_delta)
-        except Exception:
-            calculation_error = True
-
     denominator = len(paired)
     if calculation_error:
         return ComparisonStatistics(
@@ -230,9 +232,8 @@ def _comparison_statistics(
             improvement_rate=Rate(0, denominator, error=True),
             maximum_degradation=CALCULATION_ERROR,
             maximum_improvement=CALCULATION_ERROR,
-            maximum_degradation_on_main_failures=CALCULATION_ERROR,
-            average_degradation_on_main_failures=CALCULATION_ERROR,
-            degraded_main_failure_count=CALCULATION_ERROR,
+            average_degradation=CALCULATION_ERROR,
+            average_improvement=CALCULATION_ERROR,
         )
 
     return ComparisonStatistics(
@@ -244,15 +245,8 @@ def _comparison_statistics(
         improvement_rate=Rate(len(improvement), denominator),
         maximum_degradation=min(degradation) if degradation else None,
         maximum_improvement=max(improvement) if improvement else None,
-        maximum_degradation_on_main_failures=(
-            min(failure_degradations) if failure_degradations else None
-        ),
-        average_degradation_on_main_failures=(
-            fmean(failure_degradations)
-            if failure_degradations
-            else None
-        ),
-        degraded_main_failure_count=len(failure_degradations),
+        average_degradation=fmean(degradation) if degradation else None,
+        average_improvement=fmean(improvement) if improvement else None,
     )
 
 

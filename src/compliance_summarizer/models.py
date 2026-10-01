@@ -108,9 +108,8 @@ class ComparisonStatistics:
     improvement_rate: Rate
     maximum_degradation: float | str | None
     maximum_improvement: float | str | None
-    maximum_degradation_on_main_failures: float | str | None
-    average_degradation_on_main_failures: float | str | None
-    degraded_main_failure_count: int | str
+    average_degradation: float | str | None
+    average_improvement: float | str | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -122,6 +121,7 @@ class MeasurementStatistics:
     pivot_statistics: tuple[PivotMainStatistics, ...]
     comparisons: tuple[ComparisonStatistics, ...]
     top_failure_cases: tuple[FailureCaseStatistics, ...]
+    top_pass_cases: tuple[FailureCaseStatistics, ...]
 
 
 @dataclass(frozen=True, slots=True)

@@ -81,7 +81,7 @@ def calculate_grouped_analyses(
             grouped,
             main_pivot,
             acceptable_variation,
-            include_top_failure_cases=False,
+            include_ranked_cases=False,
         )
         analyses.append(GroupedAnalysis(group_key=group_key, statistics=statistics))
 

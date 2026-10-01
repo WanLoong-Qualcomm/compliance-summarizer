@@ -28,6 +28,7 @@ def test_grouping_partitions_rows_and_reuses_statistics(
     ]
     assert [item.statistics.case_count for item in grouped] == [1, 1, 1]
     assert all(item.statistics.top_failure_cases == () for item in grouped)
+    assert all(item.statistics.top_pass_cases == () for item in grouped)
     assert [
         item.statistics.pivot_statistics[0].failure_rate.numerator
         for item in grouped
@@ -93,14 +94,22 @@ def test_grouped_report_follows_overall_report_and_omits_group_top_twenty(
     assert rendered.index("Overall pivot compliance") < rendered.index(
         "Overall DUT-1_VAR1 failures"
     )
+    assert rendered.index("Overall DUT-1_VAR1 failures") < rendered.index(
+        "Overall DUT-1_VAR1 pass cases"
+    )
     assert rendered.index("Group: CHANNEL=1") < rendered.index(
         "Group: CHANNEL=2"
     ) < rendered.index("Methodology and assumptions")
+    assert rendered.index("Overall DUT-1_VAR1 pass cases") < rendered.index(
+        "Group: CHANNEL=1"
+    )
+    assert rendered.count("The top 5 passing cases are ordered") == 1
     assert "Group: CHANNEL=2" in rendered
-    assert rendered.count('>Pivot compliance</h2>') == 3
-    assert rendered.count('>DUT-1_VAR1 comparisons</h2>') == 3
-    assert "Per-pivot compliance statistics" in rendered
-    assert "Comparisons anchored on DUT-1_VAR1" in rendered
+    assert rendered.count('>Pivot compliance</h3>') == 3
+    assert rendered.count('>DUT-1_VAR1 comparisons</h3>') == 3
+    assert "Pivot compliance" in rendered
+    assert "Pivot comparisons" in rendered
+    assert '<hr class="group-divider">' in rendered
 
 
 def test_skipped_group_warning_uses_existing_warning_list(

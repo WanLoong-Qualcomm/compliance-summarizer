@@ -28,8 +28,8 @@ non-GAIN measurements remain outside v0.1.
    - Calculate compliance exclusively from `wcMargin`.
    - Compare every pivot with the main pivot using paired `NN_25C AVG` values.
    - Produce per-pivot failure statistics, worst paths, comparison rates and
-     signed extrema, main-failure degradation counts, maximum and average
-     degradation on main failures, and the top 20 failures.
+     signed extrema, average degradation and improvement, and the top 20
+     failures and the top 5 passing cases.
 4. **Report and CLI**
    - Render escaped, inline-styled standalone HTML without external assets or
      charts.
@@ -61,9 +61,9 @@ non-GAIN measurements remain outside v0.1.
   tie breaker.
 - A case identity uses the available SIGPATH identifying columns. Duplicate
   identities produce a warning; the worksheet row is retained for traceability.
-- Main-failure degradation statistics contain the signed maximum degradation
-  and signed average degradation. They are calculated only for paired rows
-  classified as degradation.
+- Comparison summaries contain signed maximum and average degradation plus
+  signed maximum and average improvement, calculated across paired rows in
+  their respective classifications.
 - AI remains a deterministic bypass statement; no prompt or provider call is
   made.
 

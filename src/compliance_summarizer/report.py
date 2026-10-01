@@ -14,6 +14,7 @@ from .grouping import format_group_key
 from .models import (
     CALCULATION_ERROR,
     AnalysisResult,
+    FailureCaseStatistics,
     GroupedAnalysis,
     MeasurementStatistics,
     Rate,
@@ -82,6 +83,13 @@ def render_html(analysis: AnalysisResult) -> str:
                 "<code>wcMargin</code>. Missing comparison operands remain blank.</p>"
                 + _top_failure_table(analysis),
             ),
+            _section(
+                f"Overall {stats.main_pivot} pass cases",
+                f'<p class="method">The top 5 passing cases are ordered by ascending '
+                f'{_escape(stats.main_pivot)} '
+                "<code>wcMargin</code>. Missing comparison operands remain blank.</p>"
+                + _top_pass_table(analysis),
+            ),
             _grouped_sections(analysis),
             _section("Methodology and assumptions", _notes(analysis)),
         )
@@ -94,7 +102,7 @@ def render_html(analysis: AnalysisResult) -> str:
 <title>Compliance Summary — {_escape(stats.measurement)}</title>
 <style>
 :root {{ color-scheme: light; --ink:#172033; --muted:#5d6778; --line:#d9dfeb;
---panel:#fff; --wash:#f4f7fb; --brand:#3157d5; --bad:#b42318; --good:#18794e; }}
+--panel:#fff; --wash:#f4f7fb; --brand:#3157d5; --bad:#FF0000; --good:#006100; }}
 * {{ box-sizing:border-box; }} body {{ margin:0; background:var(--wash); color:var(--ink);
 font:14px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif; }}
 main {{ width:min(1480px,calc(100% - 32px)); margin:28px auto 64px; }}
@@ -130,7 +138,14 @@ vertical-align:top; white-space:nowrap; }} tr:nth-child(even) td {{ background:#
 .excel-compliance-table tbody td.excel-result-pass {{ background:#C6EFCE; color:#006100; }}
 .excel-compliance-table tbody td.excel-result-fail {{ background:#FFC7CE; color:#9C0006; }}
 .calculation-error {{ color:#C00000; font-weight:700; }}
-.bad {{ color:var(--bad); font-weight:700; }} .good {{ color:var(--good); font-weight:700; }}
+.comparison-degradation {{ color:var(--bad); font-weight:400; }}
+.comparison-improvement {{ color:var(--good); font-weight:400; }}
+.compliance-failure {{ color:var(--bad); }}
+.compliance-clear {{ color:var(--good); }}
+.compliance-worst-failure {{ color:var(--bad); }}
+.main-pivot-row {{ font-weight:700; }}
+.group-divider {{ border:0; border-top:1px solid var(--line); margin:24px 0; }}
+h3 {{ margin:0 0 10px; font-size:16px; }}
 code {{ background:#edf0f6; padding:1px 4px; border-radius:4px; }} ul {{ margin-bottom:0; }}
 </style>
 </head>
@@ -171,7 +186,7 @@ def _configuration_table(analysis: AnalysisResult) -> str:
     return _table(
         ("Setting", "Value"),
         rows,
-        "Validated runtime settings",
+        "Settings",
         table_class="excel-summary-table",
     )
 
@@ -193,7 +208,7 @@ def _coverage(analysis: AnalysisResult) -> str:
             "Malformed/non-finite values",
         ),
         rows,
-        "Coverage-gap summary",
+        "Coverage gaps",
         table_class="excel-summary-table",
     )
     warnings = (*analysis.parsed.warnings, *analysis.group_warnings)
@@ -206,34 +221,61 @@ def _coverage(analysis: AnalysisResult) -> str:
     return content
 
 
-def _pivot_table(stats: MeasurementStatistics) -> str:
+def _pivot_table(
+    stats: MeasurementStatistics,
+    *,
+    highlight_pivot: str | None = None,
+) -> str:
     rows = []
     for item in stats.pivot_statistics:
         rows.append(
             (
                 item.pivot,
+                item.failure_rate.denominator,
                 item.failure_rate.numerator,
                 _format_rate(item.failure_rate),
                 _format_number(item.worst_wc_margin),
                 _format_identity(item.worst_failure_path),
             )
         )
+    cell_classes = []
+    for item, row in zip(stats.pivot_statistics, rows, strict=True):
+        classes = [
+            "main-pivot-row" if item.pivot == highlight_pivot else ""
+            for _ in row
+        ]
+        classes[2] = _append_class(
+            classes[2],
+            "compliance-clear" if item.failure_rate.numerator == 0 else "compliance-failure",
+        )
+        if item.failure_rate.percentage is not None:
+            classes[3] = _append_class(
+                classes[3],
+                "compliance-clear"
+                if item.failure_rate.percentage == 0
+                else "compliance-failure",
+            )
+        if item.worst_wc_margin is not None and item.worst_wc_margin < 0:
+            classes[4] = _append_class(classes[4], "compliance-worst-failure")
+        cell_classes.append(tuple(classes))
+
     return _table(
         (
             "Pivot",
+            "Cases",
             "Failures",
             "Failure rate",
             "Worst wcMargin",
             "Worst failure path",
         ),
         rows,
-        "Per-pivot compliance statistics",
+        "Pivot compliance",
+        cell_classes=tuple(cell_classes),
         table_class="excel-summary-table",
     )
 
 
 def _comparison_table(stats: MeasurementStatistics) -> str:
-    main_pivot = stats.main_pivot
     rows = []
     for item in stats.comparisons:
         rows.append(
@@ -244,9 +286,8 @@ def _comparison_table(stats: MeasurementStatistics) -> str:
                 _format_rate(item.improvement_rate),
                 _format_number(item.maximum_degradation),
                 _format_number(item.maximum_improvement),
-                item.degraded_main_failure_count,
-                _format_number(item.maximum_degradation_on_main_failures),
-                _format_number(item.average_degradation_on_main_failures),
+                _format_average(item.average_degradation),
+                _format_average(item.average_improvement),
             )
         )
     return _table(
@@ -257,13 +298,25 @@ def _comparison_table(stats: MeasurementStatistics) -> str:
             "Improvement rate",
             "Maximum degradation",
             "Maximum improvement",
-            f"Degraded {main_pivot} failures",
-            f"Maximum degradation on {main_pivot} failures",
-            f"Average degradation on {main_pivot} failures",
+            "Average degradation",
+            "Average improvement",
         ),
         rows,
-        f"Comparisons anchored on {stats.main_pivot}",
+        "Pivot comparisons",
         empty="No comparison pivots were discovered.",
+        cell_classes=tuple(
+            (
+                "",
+                "comparison-degradation",
+                "",
+                "comparison-improvement",
+                "comparison-degradation",
+                "comparison-improvement",
+                "comparison-degradation",
+                "comparison-improvement",
+            )
+            for _ in rows
+        ),
         table_class="excel-summary-table",
     )
 
@@ -272,7 +325,7 @@ def _pivot_compliance_content(stats: MeasurementStatistics) -> str:
     return (
         '<p class="method">A negative <code>wcMargin</code> is a failure. '
         "Blank or invalid values are excluded from each pivot's failure-rate calculation.</p>"
-        + _pivot_table(stats)
+        + _pivot_table(stats, highlight_pivot=stats.main_pivot)
     )
 
 
@@ -296,16 +349,40 @@ def _grouped_section(grouped: GroupedAnalysis) -> str:
     stats = grouped.statistics
     group_label = format_group_key(grouped.group_key)
     content = (
-        _section("Pivot compliance", _pivot_compliance_content(stats))
-        + _section(
-            f"{stats.main_pivot} comparisons",
-            _comparison_content(stats),
-        )
+        "<h3>Pivot compliance</h3>"
+        + _pivot_compliance_content(stats)
+        + '<hr class="group-divider">'
+        + f"<h3>{_escape(stats.main_pivot)} comparisons</h3>"
+        + _comparison_content(stats)
     )
     return _section(f"Group: {group_label}", content)
 
 
 def _top_failure_table(analysis: AnalysisResult) -> str:
+    return _ranked_case_table(
+        analysis,
+        analysis.statistics.top_failure_cases,
+        caption="Failure cases",
+        empty=f"{analysis.statistics.main_pivot} has no negative wcMargin values.",
+    )
+
+
+def _top_pass_table(analysis: AnalysisResult) -> str:
+    return _ranked_case_table(
+        analysis,
+        analysis.statistics.top_pass_cases,
+        caption="Pass cases",
+        empty=f"{analysis.statistics.main_pivot} has no non-negative wcMargin values.",
+    )
+
+
+def _ranked_case_table(
+    analysis: AnalysisResult,
+    cases: Sequence[FailureCaseStatistics],
+    *,
+    caption: str,
+    empty: str,
+) -> str:
     schema = analysis.parsed.schema
     fixed_headers = tuple(
         header for header, _ in sorted(schema.fixed_columns.items(), key=lambda item: item[1])
@@ -328,7 +405,7 @@ def _top_failure_table(analysis: AnalysisResult) -> str:
     )
     rows: list[tuple[object, ...]] = []
     cell_classes: list[tuple[str, ...]] = []
-    for item in analysis.statistics.top_failure_cases:
+    for item in cases:
         case = item.case
         row: list[object] = [case.worksheet_row]
         classes: list[str] = ["excel-worksheet-row"]
@@ -354,19 +431,22 @@ def _top_failure_table(analysis: AnalysisResult) -> str:
             ):
                 row.append(case.pivot_raw_values[pivot.name].get(statistic))
                 classes.append(pivot_class)
-        row.extend(
-            item.deltas[comparison.comparison_pivot]
-            for comparison in analysis.statistics.comparisons
-        )
-        classes.extend("excel-delta" for _ in analysis.statistics.comparisons)
+        for comparison in analysis.statistics.comparisons:
+            delta = item.deltas[comparison.comparison_pivot]
+            row.append(delta)
+            semantic_class = _comparison_class(delta)
+            classes.append(
+                "excel-delta"
+                + (f" {semantic_class}" if semantic_class else "")
+            )
         rows.append(tuple(row))
         cell_classes.append(tuple(classes))
     return _grouped_table(
         ("Worksheet row",) + fixed_headers,
         pivot_groups + (("Comparison Deltas", comparison_headers),),
         rows,
-        f"Worst {min(20, len(rows))} failures for {analysis.statistics.main_pivot}",
-        empty=f"{analysis.statistics.main_pivot} has no negative wcMargin values.",
+        caption,
+        empty=empty,
         cell_classes=cell_classes,
         table_class="grouped-table excel-compliance-table",
     )
@@ -386,15 +466,41 @@ def _table(
     caption: str,
     *,
     empty: str = "No data available.",
+    cell_classes: Sequence[Sequence[str]] | None = None,
+    header_classes: Sequence[str] | None = None,
     table_class: str = "",
 ) -> str:
     materialized = tuple(tuple(row) for row in rows)
-    head = "".join(f'<th scope="col">{_escape(value)}</th>' for value in headers)
-    if materialized:
-        body = "".join(
-            "<tr>" + "".join(f"<td>{_render_cell(value)}</td>" for value in row) + "</tr>"
-            for row in materialized
+    head = "".join(
+        f'<th{class_attribute} scope="col">{_escape(value)}</th>'
+        for index, value in enumerate(headers)
+        for class_attribute in (
+            (
+                f' class="{_escape(header_classes[index])}"'
+                if header_classes is not None
+                and index < len(header_classes)
+                and header_classes[index]
+                else ""
+            ),
         )
+    )
+    if materialized:
+        body_rows = []
+        for index, row in enumerate(materialized):
+            classes = cell_classes[index] if cell_classes is not None else ()
+            cells = "".join(
+                f'<td{class_attribute}>{_render_cell(value)}</td>'
+                for column, value in enumerate(row)
+                for class_attribute in (
+                    (
+                        f' class="{_escape(classes[column])}"'
+                        if column < len(classes) and classes[column]
+                        else ""
+                    ),
+                )
+            )
+            body_rows.append(f"<tr>{cells}</tr>")
+        body = "".join(body_rows)
     else:
         body = f'<tr><td colspan="{len(headers)}">{_escape(empty)}</td></tr>'
     class_attribute = f' class="{_escape(table_class)}"' if table_class else ""
@@ -466,6 +572,19 @@ def _grouped_table(
     )
 
 
+def _comparison_class(value: object) -> str:
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        if value < 0:
+            return "comparison-degradation"
+        if value > 0:
+            return "comparison-improvement"
+    return ""
+
+
+def _append_class(existing: str, additional: str) -> str:
+    return f"{existing} {additional}".strip()
+
+
 def _format_rate(rate: Rate) -> str:
     if rate.error:
         return CALCULATION_ERROR
@@ -492,6 +611,12 @@ def _format_number(value: object) -> str:
     if isinstance(value, Enum):
         return str(value.value)
     return str(value)
+
+
+def _format_average(value: object) -> str:
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return f"{value:.2f}"
+    return _format_number(value)
 
 
 def _render_cell(value: object) -> str:
