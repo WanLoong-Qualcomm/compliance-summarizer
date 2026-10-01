@@ -1,135 +1,156 @@
-# v0.1 Implementation Plan and Closeout
+# Current Implementation Status
 
-This plan implements the current requirements in `PROJECT.md`. It intentionally
-does not carry forward behavior from older prototypes where that behavior
-conflicts with the current specification.
+## Version
+
+The current packaged application is version 0.2.0. The implementation described
+here is complete for the supported deterministic SIGPATH workflow.
 
 ## Outcome
 
-Deliver a `uv`-managed Python 3.12 command-line application that reads the
-configured SIGPATH compliance worksheet, calculates deterministic GAIN
-statistics, and writes a self-contained HTML report. AI, aggregation, and
-non-GAIN measurements remain outside v0.1.
+The application reads a configured `.xlsx` or `.xlsm` compliance workbook,
+discovers its SIGPATH schema, calculates deterministic statistics for one or
+more supported measurements, optionally calculates metadata-grouped analyses,
+and writes a self-contained HTML report. Model calls, charts, GUI behavior,
+workbook modification, and additional output formats remain outside the
+current scope.
 
-## Workstreams
+## Completed workstreams
 
-1. **Foundation and configuration**
-   - Package and lock dependencies with `uv`.
-   - Validate every current `JUI.json` field.
-   - Reject unsupported v0.1 combinations with actionable messages.
-2. **Workbook contract and normalization**
-   - Read `.xlsx`/`.xlsm` without saving or executing macros.
-   - Discover row-2 pivot names, row-3 statistics, and workbook-defined row-4
-     metadata headers.
-   - Retain raw values separately from normalized numeric values.
-   - Create stable case identities from every discovered metadata column except
-     `Result?`, `LL`, and `UL`.
-3. **Validation and deterministic statistics**
-   - Treat blank, malformed, and non-finite required pivot values as coverage
-     gaps and exclude them only from affected denominators.
-   - Calculate compliance exclusively from `wcMargin`.
-   - Compare every pivot with the main pivot using paired `MEAN` values when
-     available, otherwise paired `NN_25C AVG` values.
-   - Produce per-pivot failure statistics, worst paths, comparison rates and
-     signed extrema, average degradation and improvement, and the top 20
-     failures and the top 5 passing cases.
-4. **Report and CLI**
-   - Render escaped, inline-styled standalone HTML without external assets or
-     charts.
-   - Display configuration, coverage warnings, percentage-only rates,
-     statistics, and source fields for the top failures.
-   - Expose initialization and report generation through one CLI.
-5. **Qualification**
-   - Keep coverage gaps, malformed values, tolerance boundaries, ties, empty
-     results, HTML escaping, and end-to-end CLI behavior represented in the
-     existing test suite.
-   - Run the suite as part of a future verification pass.
+### 1. Configuration and CLI
 
-## Explicit v0.1 decisions
+- `JUI.json` is loaded and strictly validated.
+- Relative workbook paths resolve against the settings file.
+- Only the `SIGPATH` block is accepted.
+- The supported measurement registry is validated before processing.
+- Every selected measurement requires exactly one finite, non-negative
+  `acceptable_variation` value.
+- `group_by` entries are normalized and deduplicated. Entries may be discovered
+  metadata fields or named schemes from `configs/groups.json`; custom scheme
+  source fields are checked against the source-result/limit exclusions.
+- `include_group_failures` and `include_group_marginal_passes` are validated as
+  booleans and default to `false`.
+- `bypass_model` must be `true`.
+- `--init-settings`, `--settings`, `--output`, `--overwrite`, and `--version`
+  are available through the CLI.
+- Expected failures return exit code 2 with an actionable message.
 
-- Blank, non-numeric, and non-finite required pivot cells are reported as
-  coverage gaps. Coverage gaps are expected unavailable data: they remain
-  blank in the report, are not failures, and do not enter affected metrics.
-- An unexpected calculation failure is represented by the literal `ERROR`.
-  The HTML renderer displays it in bold red text instead of silently leaving a
-  blank.
-- Comparison rates use valid paired `MEAN` values when available and otherwise
-  `NN_25C AVG` values internally, but the report shows percentages only. Rates
-  with no valid pairs are blank.
-- Comparison deltas are oriented by the measurement definition. Degradation is
-  negative, improvement is positive, and unchanged values are within the
-  inclusive acceptable variation.
-- For GAIN, the raw delta is the main-pivot comparison statistic minus the
-  comparison-pivot comparison statistic. `MEAN` is preferred over
-  `NN_25C AVG` per pivot.
-- The top-failure table contains exactly 20 rows when at least 20 failures
-  exist. Ties use identifying fields and the source row as a final display-only
-  tie breaker.
-- `TESTNAME` and `MEASPORT` are required row-4 metadata fields. All other
-  metadata fields are optional and discovered dynamically. A case identity uses
-  every available metadata field except `Result?`, `LL`, and `UL`. Duplicate
-  identities produce a warning; the worksheet row is retained for traceability.
-- Comparison summaries contain signed maximum and average degradation plus
-  signed maximum and average improvement, calculated across paired rows in
-  their respective classifications.
-- AI remains a deterministic bypass statement; no prompt or provider call is
-  made.
+### 2. Workbook parsing and normalization
 
-## v0.1 closeout
+- `.xlsx` and `.xlsm` workbooks are opened read-only with cached values.
+- Row 2 pivot names support merged cells.
+- Row 3 pivot statistics and row 4 metadata are discovered dynamically.
+- `TESTNAME` and `MEASPORT` are required metadata fields.
+- Pivots require `wcMargin` and `MEAN` or `NN_25C AVG`.
+- Raw source values and normalized numeric values are stored separately.
+- Selected measurements are loaded in one worksheet scan.
+- Optional filters are loaded from `configs/test_filters.json` beside the
+  settings file.
+- Named custom grouping schemes are loaded from `configs/groups.json` beside
+  the settings file.
+- Coverage gaps, malformed values, invalid limits, filtered rows, and duplicate
+  identities produce warnings with metric-specific impact.
 
-The v0.1 implementation is complete for the configured SIGPATH GAIN workflow.
-A valid configured workbook produces one standalone HTML report, and the
-report uses the configured pivot name throughout its headings and labels. The
-Excel-style top-failure table keeps pivot names in a group row above the field
-headers, includes a separate worksheet-row header cell, and leaves expected
-unavailable values blank.
+### 3. Measurement calculations
 
-The existing test expectations have been aligned with the v0.1 output. The
-test suite was not run during this documentation closeout; the generated
-report and `git diff --check` were used for final verification.
+The registry in `measurements.py` currently supports:
 
-The following remain intentionally deferred to the next revision:
+`GAIN`, `GAIN-DNL`, `GCIB`, `IP2ACS`, `IP2IB`, `IP3ACS`, `IP3IB`, `S11-LOW`,
+`S11-MID`, `S11-HIGH`, and `SSNFWSPURREMOVAL`.
 
-- aggregation and port-group reporting;
-- non-GAIN measurement definitions;
-- model-backed explanations and a defined AI output contract;
-- additional report formats and optional visualizations; and
-- broader workbook contracts beyond the v0.1 SIGPATH layout.
+The calculator implements:
 
-## v0.2 implementation plan
+- `wcMargin`-based failure/pass statistics;
+- valid denominators and invalid-margin counts;
+- worst margins and complete available failure identities;
+- top-20 failure ranking;
+- top-5 marginal-pass ranking;
+- main-pivot comparisons against every other pivot;
+- tolerance-aware degradation, unchanged, and improvement classification;
+- signed maximum and average degradation/improvement; and
+- `GAIN-DNL` midpoint-deviation comparison using `LL` and `UL`.
 
-### Outcome
+Missing or invalid values are unavailable data, not failures. Comparison
+statistics use valid pairs only. A missing comparison operand remains blank in
+ranked tables. Rates with no valid pairs render blank.
 
-Enable grouped SIGPATH GAIN analysis by partitioning the normalized measurement
-rows with the configured `group_by` fields, while reusing the v0.1 statistics
-calculator and HTML presentation conventions.
+### 4. Grouped analysis
 
-### Workstreams
+- Empty `group_by` preserves overall-only behavior.
+- Non-empty `group_by` accepts discovered metadata fields, named custom schemes,
+  or a combination of both.
+- Custom schemes map a source metadata field's allowed values to output labels
+  and use their configured default for blank or unmatched values.
+- Blank raw-field grouping values are shown as `(blank)`.
+- String matching trims whitespace and ignores case; numeric/string equivalents
+  match numerically, and valid JSON values are supported.
+- Field order affects labels only, not group membership.
+- Groups with no valid main-pivot `wcMargin` are skipped with a warning.
+- Valid groups reuse the overall calculator. Per-group top-20 failures and
+  top-5 marginal passes are independently controlled by the two group-table
+  settings.
 
-1. **Configuration and validation**
-   - Accept a non-empty `group_by` list.
-   - Normalize arbitrary workbook metadata field names. Reject only
-     `Result?`, `LL`, and `UL`; fields absent from the selected workbook are
-     reported during workbook/grouping validation.
-2. **Grouping layer**
-   - Build one group for each unique combination of selected field values.
-   - Normalize blank, empty, and whitespace-only values to `(blank)` for group
-     identity and display.
-   - Preserve the existing case objects and pivot pairing behavior inside each
-     group.
-3. **Statistics and result model**
-   - Run the existing v0.1 statistics calculation independently for each valid
-     group.
-   - Skip groups with no valid main-pivot `wcMargin` and return a warning.
-   - Preserve the current overall analysis unchanged.
-4. **HTML report**
-   - Render the overall report first.
-   - Render grouped sections afterward using the existing summary and comparison
-     tables.
-   - Omit only the top-20 failure table from grouped sections.
-   - Reuse the existing warning-list, blank-value, percentage, and `ERROR`
-     conventions without adding denominator or per-group coverage tables.
-5. **Qualification**
-   - Add tests for field validation, composite grouping, blank groups, skipped
-     groups, overall compatibility, grouped comparison results, and report order.
-   - Run the full existing suite and the new v0.2 tests.
+### 5. HTML report
+
+- The report is standalone and contains inline CSS only.
+- User and workbook values are HTML-escaped.
+- Configuration appears once at the beginning.
+- Each selected measurement receives a complete overall section.
+- Grouped sections follow the corresponding overall section.
+- Methodology and assumptions appear once at the end.
+- Expected unavailable values render blank.
+- Unexpected calculation failures render as bold red `ERROR`.
+- Existing reports are protected unless `--overwrite` is supplied.
+- Writes use a temporary file and atomic replacement.
+
+## Explicit behavior decisions
+
+- `Result?` is source context only and never determines compliance.
+- A negative valid `wcMargin` is a failure; zero is a pass.
+- `MEAN` is preferred when its pivot column exists; `NN_25C AVG` is the
+  alternative when `MEAN` is not defined for that pivot.
+- Comparison deltas are oriented so degradation is negative and improvement is
+  positive.
+- An absolute oriented delta within the inclusive tolerance is unchanged.
+- Main-pivot statistics use valid main values even when another pivot is
+  missing a value.
+- Pairwise summaries use only valid pairs.
+- Ranking ties use stable identity fields and worksheet row.
+- `GAIN-DNL` uses absolute deviation from the row's `LL`/`UL` midpoint and
+  excludes invalid-limit rows only from affected comparisons.
+- Grouped reports include ranked case tables only when their corresponding
+  group-table settings are enabled.
+- No model/provider call is made in version 0.2.0.
+
+## Runtime configuration notes
+
+The checked-in `JUI.json` is a local working configuration. It points to
+`references/QMOM_OVT_v2.xlsm`, selects `Combined`, uses `GF-QMOM` as the main
+pivot, selects all supported measurements, and groups by `TEMP`. Its absolute
+path is machine-specific and must be edited elsewhere.
+
+`configs/test_filters.json` and `configs/groups.json` are consumed at runtime
+when the corresponding features are configured. The latter must contain a JSON
+object whose definitions have `field`, `groups`, and `default` properties.
+
+## Verification
+
+Run the complete suite with:
+
+```powershell
+uv run pytest
+```
+
+The current test suite covers configuration, workbook discovery and
+normalization, filters, coverage gaps, comparison direction, midpoint
+deviation, ranking, grouping, HTML rendering, and CLI behavior.
+
+## Deferred work
+
+Future work may add:
+
+- a defined structured AI/model output contract and provider integration;
+- additional aggregation strategies beyond metadata grouping;
+- charts generated from structured statistics;
+- additional report formats;
+- a graphical interface; and
+- safe workbook-independent configuration for reusable group definitions.

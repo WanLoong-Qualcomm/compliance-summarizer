@@ -10,7 +10,7 @@ from pathlib import Path
 
 from .errors import ConfigurationError
 from .measurements import MEASUREMENTS
-from .models import Settings
+from .models import CustomGroupDefinition, Settings
 from .workbook import canonical_metadata_header, is_path_excluded_header
 
 
@@ -23,8 +23,13 @@ DEFAULT_SETTINGS: dict[str, object] = {
     "background_information": "",
     "main_pivot": "",
     "group_by": [],
+    "include_group_failures": False,
+    "include_group_marginal_passes": False,
     "bypass_model": True,
 }
+OPTIONAL_SETTINGS = frozenset(
+    {"include_group_failures", "include_group_marginal_passes"}
+)
 
 
 def default_settings() -> dict[str, object]:
@@ -82,6 +87,90 @@ def load_test_filters(
     return filters
 
 
+def load_custom_groups(
+    settings_path: str | Path,
+) -> dict[str, CustomGroupDefinition]:
+    """Load named metadata grouping schemes beside the settings file."""
+
+    group_path = Path(settings_path).resolve().parent / "configs" / "groups.json"
+    if not group_path.is_file():
+        return {}
+    try:
+        payload = json.loads(group_path.read_text(encoding="utf-8"))
+    except JSONDecodeError as error:
+        raise ConfigurationError(
+            f"Invalid JSON in '{group_path}' at line {error.lineno}, "
+            f"column {error.colno}: {error.msg}."
+        ) from error
+    except OSError as error:
+        raise ConfigurationError(
+            f"Could not read custom group file '{group_path}': {error}."
+        ) from error
+
+    if not isinstance(payload, dict):
+        raise ConfigurationError("The custom group root must be a JSON object.")
+
+    definitions: dict[str, CustomGroupDefinition] = {}
+    for raw_name, raw_definition in payload.items():
+        name = _nonempty_string(raw_name, "custom group name")
+        lookup_name = canonical_metadata_header(name)
+        if lookup_name in definitions:
+            raise ConfigurationError(
+                f"Custom group name '{raw_name}' duplicates another name after "
+                "normalization."
+            )
+        if not isinstance(raw_definition, dict):
+            raise ConfigurationError(
+                f"Custom group '{name}' must contain a JSON object definition."
+            )
+        required = {"field", "groups", "default"}
+        missing = tuple(sorted(required - set(raw_definition)))
+        if missing:
+            raise ConfigurationError(
+                f"Custom group '{name}' is missing required field(s): "
+                + ", ".join(missing)
+                + "."
+            )
+
+        field = canonical_metadata_header(raw_definition["field"])
+        if not field:
+            raise ConfigurationError(f"Custom group '{name}' has a blank field.")
+        if is_path_excluded_header(field):
+            raise ConfigurationError(
+                f"Custom group '{name}' cannot use source-result or limit field "
+                f"'{field}'."
+            )
+
+        raw_groups = raw_definition["groups"]
+        if not isinstance(raw_groups, dict) or not raw_groups:
+            raise ConfigurationError(
+                f"Custom group '{name}.groups' must be a non-empty JSON object."
+            )
+        groups: list[tuple[str, tuple[object, ...]]] = []
+        seen_labels: set[str] = set()
+        for raw_label, raw_values in raw_groups.items():
+            label = _nonempty_string(raw_label, f"custom group '{name}' label")
+            label_key = label.casefold()
+            if label_key in seen_labels:
+                raise ConfigurationError(
+                    f"Custom group '{name}' contains duplicate label '{label}'."
+                )
+            if type(raw_values) is not list or not raw_values:
+                raise ConfigurationError(
+                    f"Custom group '{name}.{label}' must contain a non-empty list."
+                )
+            seen_labels.add(label_key)
+            groups.append((label, tuple(raw_values)))
+
+        definitions[lookup_name] = CustomGroupDefinition(
+            name=name,
+            field=field,
+            groups=tuple(groups),
+            default=raw_definition["default"],
+        )
+    return definitions
+
+
 def create_settings_template(path: str | Path = "JUI.json") -> Path:
     target = Path(path)
     if target.exists():
@@ -122,7 +211,11 @@ def load_settings(path: str | Path = "JUI.json") -> Settings:
 
     if not isinstance(payload, dict):
         raise ConfigurationError("The settings root must be a JSON object.")
-    missing = tuple(field for field in DEFAULT_SETTINGS if field not in payload)
+    missing = tuple(
+        field
+        for field in DEFAULT_SETTINGS
+        if field not in payload and field not in OPTIONAL_SETTINGS
+    )
     if missing:
         raise ConfigurationError(
             "Missing required settings field(s): " + ", ".join(missing) + "."
@@ -230,6 +323,21 @@ def load_settings(path: str | Path = "JUI.json") -> Settings:
             )
         normalized_group_by.append(field)
 
+    include_group_failures = payload.get(
+        "include_group_failures",
+        DEFAULT_SETTINGS["include_group_failures"],
+    )
+    if type(include_group_failures) is not bool:
+        raise ConfigurationError("'include_group_failures' must be a boolean.")
+    include_group_marginal_passes = payload.get(
+        "include_group_marginal_passes",
+        DEFAULT_SETTINGS["include_group_marginal_passes"],
+    )
+    if type(include_group_marginal_passes) is not bool:
+        raise ConfigurationError(
+            "'include_group_marginal_passes' must be a boolean."
+        )
+
     bypass = payload["bypass_model"]
     if bypass is not True:
         raise ConfigurationError("'bypass_model' must be true in v0.2.")
@@ -243,6 +351,8 @@ def load_settings(path: str | Path = "JUI.json") -> Settings:
         background_information=background,
         main_pivot=main_pivot,
         group_by=tuple(normalized_group_by),
+        include_group_failures=include_group_failures,
+        include_group_marginal_passes=include_group_marginal_passes,
         bypass_model=True,
     )
 

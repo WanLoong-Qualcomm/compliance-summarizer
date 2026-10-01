@@ -1,5 +1,5 @@
 {
-    "sigpath-blocks":
+    "sigpath-block":
     {
         "field": "MEASPORT",
         "groups": {
@@ -12,8 +12,8 @@
     "over-voltage-temperature":
     {
         "field": "TEMP",
-        "groups" {
-            "25c" : [25],
+        "groups": {
+            "25c" : [25]
         },
         "default" : "OVT"
     }

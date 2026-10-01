@@ -1,0 +1,37 @@
+{
+  "excel_file_path": "C:\\Users\\wanloong\\git\\compliance-summarizer\\references\\QMOM_OVT_v2.xlsm",
+  "compliance_sheet_name": "Combined",
+  "block": "SIGPATH",
+  "testnames": [
+    "GAIN",
+    "GAIN-DNL",
+    "GCIB",
+    "IP2ACS",
+    "IP2IB",
+    "IP3ACS",
+    "IP3IB",
+    "S11-LOW",
+    "S11-MID",
+    "S11-HIGH",
+    "SSNFWSPURREMOVAL"
+  ],
+  "acceptable_variation": {
+    "GAIN": 0.2,
+    "GAIN-DNL": 0.2,
+    "GCIB": 0.2,
+    "IP2ACS": 0.2,
+    "IP2IB": 0.2,
+    "IP3ACS": 0.2,
+    "IP3IB": 0.2,
+    "S11-LOW": 0.2,
+    "S11-MID": 0.2,
+    "S11-HIGH": 0.2,
+    "SSNFWSPURREMOVAL": 0.2
+  },
+  "background_information": "",
+  "main_pivot": "GF-QMOM",
+  "group_by": ["TEMP"],
+  "include_group_failures": false,
+  "include_group_marginal_passes": false,
+  "bypass_model": true
+}

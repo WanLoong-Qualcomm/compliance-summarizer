@@ -20,7 +20,17 @@ class Settings:
     background_information: str
     main_pivot: str
     group_by: tuple[str, ...]
+    include_group_failures: bool
+    include_group_marginal_passes: bool
     bypass_model: bool
+
+
+@dataclass(frozen=True, slots=True)
+class CustomGroupDefinition:
+    name: str
+    field: str
+    groups: tuple[tuple[str, tuple[Any, ...]], ...]
+    default: Any
 
 
 @dataclass(frozen=True, slots=True)
@@ -127,6 +137,8 @@ class MeasurementStatistics:
 class GroupedAnalysis:
     group_key: tuple[tuple[str, Any], ...]
     statistics: MeasurementStatistics
+    include_failures: bool = False
+    include_marginal_passes: bool = False
 
 
 @dataclass(frozen=True, slots=True)

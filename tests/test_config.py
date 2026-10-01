@@ -4,7 +4,11 @@ import json
 
 import pytest
 
-from compliance_summarizer.config import create_settings_template, load_settings
+from compliance_summarizer.config import (
+    create_settings_template,
+    load_custom_groups,
+    load_settings,
+)
 from compliance_summarizer.errors import ConfigurationError
 
 from conftest import write_settings
@@ -21,6 +25,8 @@ def test_load_settings_resolves_workbook_relative_to_settings(
     assert settings.excel_file_path == workbook.resolve()
     assert settings.testnames == ("GAIN",)
     assert settings.acceptable_variation == {"GAIN": 0.2}
+    assert settings.include_group_failures is False
+    assert settings.include_group_marginal_passes is False
 
 
 @pytest.mark.parametrize(
@@ -30,6 +36,11 @@ def test_load_settings_resolves_workbook_relative_to_settings(
         ({"testnames": []}, "testnames.*GAIN"),
         ({"acceptable_variation": {"GAIN": -0.1}}, "non-negative"),
         ({"group_by": ["Result?"]}, "Unsupported.*group_by"),
+        ({"include_group_failures": "yes"}, "include_group_failures.*boolean"),
+        (
+            {"include_group_marginal_passes": 1},
+            "include_group_marginal_passes.*boolean",
+        ),
         ({"bypass_model": False}, "must be true"),
     ],
 )
@@ -56,6 +67,52 @@ def test_load_settings_accepts_and_normalizes_group_by(
     settings = load_settings(path)
 
     assert settings.group_by == ("CUSTOM_FIELD", "CHANNEL")
+
+
+def test_load_custom_groups_normalizes_names_and_fields(tmp_path):
+    config_dir = tmp_path / "configs"
+    config_dir.mkdir()
+    (config_dir / "groups.json").write_text(
+        json.dumps(
+            {
+                " sigpath-block ": {
+                    "field": " measport ",
+                    "groups": {"LB": ["L1", " l2 "]},
+                    "default": "OTHER",
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    definitions = load_custom_groups(tmp_path / "JUI.json")
+
+    assert tuple(definitions) == ("SIGPATH-BLOCK",)
+    definition = definitions["SIGPATH-BLOCK"]
+    assert definition.name == "sigpath-block"
+    assert definition.field == "MEASPORT"
+    assert definition.groups == (("LB", ("L1", " l2 ")),)
+    assert definition.default == "OTHER"
+
+
+def test_load_custom_groups_rejects_excluded_source_fields(tmp_path):
+    config_dir = tmp_path / "configs"
+    config_dir.mkdir()
+    (config_dir / "groups.json").write_text(
+        json.dumps(
+            {
+                "bad": {
+                    "field": "Result?",
+                    "groups": {"FAIL": ["FAIL"]},
+                    "default": "OTHER",
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ConfigurationError, match="source-result or limit"):
+        load_custom_groups(tmp_path / "JUI.json")
 
 
 def test_load_settings_accepts_multiple_supported_measurements(

@@ -26,9 +26,9 @@ def test_report_is_self_contained_and_escapes_user_text(
     assert "&lt;script&gt;" in rendered
     assert "Result?" in rendered
     assert "Overall DUT-1_VAR1 failures" in rendered
-    assert "Overall DUT-1_VAR1 pass cases" in rendered
+    assert "Overall DUT-1_VAR1 marginal passes" in rendered
     assert "The top 20 failures are ordered" in rendered
-    assert "The top 5 passing cases are ordered" in rendered
+    assert "The top 5 marginal passes are ordered" in rendered
     assert "Cases" in rendered
     assert "Average degradation" in rendered
     assert "Average improvement" in rendered
@@ -81,6 +81,7 @@ def test_report_repeats_the_current_summary_for_each_measurement(
     assert rendered.count(">Methodology and assumptions</h2>") == 1
     assert rendered.count(">Overall pivot compliance</h2>") == 2
     assert rendered.count('<article class="measurement-summary">') == 2
+    assert ".measurement-summary { margin-top:24px; }" in rendered
     assert ".measurement-summary + .measurement-summary" in rendered
     assert rendered.index(">Run configuration</h2>") < rendered.index(">GAIN compliance summary</h1>")
     assert rendered.index(">Methodology and assumptions</h2>") > rendered.index(">GCIB compliance summary</h1>")

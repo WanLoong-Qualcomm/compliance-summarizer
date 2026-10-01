@@ -21,6 +21,7 @@ from .models import (
     MeasurementStatistics,
     PivotMainStatistics,
     Rate,
+    SheetSchema,
 )
 
 
@@ -93,6 +94,7 @@ h2 {{ margin:0 0 14px; font-size:20px; }} .subtitle {{ opacity:.84; margin:0; }}
 background:#ffffff13; }} .card strong {{ display:block; font-size:21px; }}
 section {{ margin-top:18px; padding:22px; border:1px solid var(--line); border-radius:14px;
 background:var(--panel); box-shadow:0 3px 14px #1720330b; }} .method,.muted {{ color:var(--muted); }}
+.measurement-summary {{ margin-top:24px; }}
 .measurement-summary + .measurement-summary {{ margin-top:42px; padding-top:28px;
 border-top:2px solid var(--line); }}
 .scroll {{ overflow:auto; }} table {{ width:100%; border:1px solid #7F7F7F; border-collapse:collapse; font-size:13px; }}
@@ -165,13 +167,13 @@ def _measurement_sections(
                 + _top_failure_table(analysis, item),
             ),
             _section(
-                f"Overall {stats.main_pivot} pass cases",
-                f'<p class="method">The top 5 passing cases are ordered by ascending '
+                f"Overall {stats.main_pivot} marginal passes",
+                f'<p class="method">The top 5 marginal passes are ordered by ascending '
                 f'{_escape(stats.main_pivot)} '
                 "<code>wcMargin</code>. Missing comparison operands remain blank.</p>"
                 + _top_pass_table(analysis, item),
             ),
-            _grouped_sections(item),
+            _grouped_sections(analysis, item),
             )
         )
         + "</article>"
@@ -214,6 +216,11 @@ def _configuration_table(analysis: AnalysisResult) -> str:
             ),
         ),
         ("Group by", ", ".join(settings.group_by) or "(none)"),
+        ("Include group failures", settings.include_group_failures),
+        (
+            "Include group marginal passes",
+            settings.include_group_marginal_passes,
+        ),
         ("Model bypass", settings.bypass_model),
         ("Background information", settings.background_information or ""),
     )
@@ -404,14 +411,21 @@ def _comparison_content(stats: MeasurementStatistics) -> str:
     )
 
 
-def _grouped_sections(item: MeasurementAnalysis) -> str:
+def _grouped_sections(
+    analysis: AnalysisResult,
+    item: MeasurementAnalysis,
+) -> str:
     return "".join(
-        _grouped_section(grouped)
+        _grouped_section(analysis, item, grouped)
         for grouped in item.grouped_analyses
     )
 
 
-def _grouped_section(grouped: GroupedAnalysis) -> str:
+def _grouped_section(
+    analysis: AnalysisResult,
+    item: MeasurementAnalysis,
+    grouped: GroupedAnalysis,
+) -> str:
     stats = grouped.statistics
     group_label = format_group_key(grouped.group_key)
     content = (
@@ -421,6 +435,38 @@ def _grouped_section(grouped: GroupedAnalysis) -> str:
         + f"<h3>{_escape(stats.main_pivot)} comparisons</h3>"
         + _comparison_content(stats)
     )
+    if grouped.include_failures:
+        content += (
+            '<hr class="group-divider">'
+            + f"<h3>{_escape(stats.main_pivot)} failures</h3>"
+            + '<p class="method">The top 20 failures are ordered by ascending '
+            + f'{_escape(stats.main_pivot)} '
+            + "<code>wcMargin</code>. Missing comparison operands remain blank.</p>"
+            + _ranked_case_table(
+                analysis,
+                item.parsed.schema,
+                stats,
+                stats.top_failure_cases,
+                caption="Failure cases",
+                empty=f"{stats.main_pivot} has no negative wcMargin values.",
+            )
+        )
+    if grouped.include_marginal_passes:
+        content += (
+            '<hr class="group-divider">'
+            + f"<h3>{_escape(stats.main_pivot)} marginal passes</h3>"
+            + '<p class="method">The top 5 marginal passes are ordered by ascending '
+            + f'{_escape(stats.main_pivot)} '
+            + "<code>wcMargin</code>. Missing comparison operands remain blank.</p>"
+            + _ranked_case_table(
+                analysis,
+                item.parsed.schema,
+                stats,
+                stats.top_pass_cases,
+                caption="Marginal pass cases",
+                empty=f"{stats.main_pivot} has no non-negative wcMargin values.",
+            )
+        )
     return _section(f"Group: {group_label}", content)
 
 
@@ -430,7 +476,8 @@ def _top_failure_table(
 ) -> str:
     return _ranked_case_table(
         analysis,
-        item,
+        item.parsed.schema,
+        item.statistics,
         item.statistics.top_failure_cases,
         caption="Failure cases",
         empty=f"{item.statistics.main_pivot} has no negative wcMargin values.",
@@ -443,22 +490,23 @@ def _top_pass_table(
 ) -> str:
     return _ranked_case_table(
         analysis,
-        item,
+        item.parsed.schema,
+        item.statistics,
         item.statistics.top_pass_cases,
-        caption="Pass cases",
+        caption="Marginal pass cases",
         empty=f"{item.statistics.main_pivot} has no non-negative wcMargin values.",
     )
 
 
 def _ranked_case_table(
     analysis: AnalysisResult,
-    item: MeasurementAnalysis,
+    schema: SheetSchema,
+    stats: MeasurementStatistics,
     cases: Sequence[FailureCaseStatistics],
     *,
     caption: str,
     empty: str,
 ) -> str:
-    schema = item.parsed.schema
     metadata_headers = tuple(
         header for header, _ in sorted(schema.metadata_columns.items(), key=lambda item: item[1])
     )
@@ -475,8 +523,8 @@ def _ranked_case_table(
         for pivot in schema.pivots
     )
     comparison_headers = tuple(
-        f"Δ({item.statistics.main_pivot}, {comparison.comparison_pivot})"
-        for comparison in item.statistics.comparisons
+        f"Δ({stats.main_pivot}, {comparison.comparison_pivot})"
+        for comparison in stats.comparisons
     )
     rows: list[tuple[object, ...]] = []
     cell_classes: list[tuple[str, ...]] = []
@@ -506,7 +554,7 @@ def _ranked_case_table(
             ):
                 row.append(case.pivot_raw_values[pivot.name].get(statistic))
                 classes.append(pivot_class)
-        for comparison in item.statistics.comparisons:
+        for comparison in stats.comparisons:
             delta = case_statistics.deltas[comparison.comparison_pivot]
             row.append(delta)
             semantic_class = _comparison_class(delta)

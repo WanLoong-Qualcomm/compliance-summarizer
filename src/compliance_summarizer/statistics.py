@@ -1,4 +1,4 @@
-"""Deterministic GAIN compliance and comparison calculations."""
+"""Deterministic compliance and comparison calculations for all measurements."""
 
 from __future__ import annotations
 
@@ -25,6 +25,8 @@ def calculate_measurement_statistics(
     acceptable_variation: float,
     *,
     include_ranked_cases: bool = True,
+    include_failure_cases: bool | None = None,
+    include_pass_cases: bool | None = None,
 ) -> MeasurementStatistics:
     """Calculate deterministic statistics without consulting source ``Result?``."""
 
@@ -62,7 +64,11 @@ def calculate_measurement_statistics(
     comparison_names = tuple(
         pivot for pivot in parsed.schema.pivot_names if pivot != main_pivot
     )
-    if include_ranked_cases:
+    if include_failure_cases is None:
+        include_failure_cases = include_ranked_cases
+    if include_pass_cases is None:
+        include_pass_cases = include_ranked_cases
+    if include_failure_cases or include_pass_cases:
         ordered_failures = sorted(
             main_failures,
             key=lambda case: (
@@ -71,9 +77,13 @@ def calculate_measurement_statistics(
                 case.worksheet_row,
             ),
         )
-        top_failure_cases = tuple(
-            _case_statistics(case, main_pivot, comparison_names, definition)
-            for case in ordered_failures[:20]
+        top_failure_cases = (
+            tuple(
+                _case_statistics(case, main_pivot, comparison_names, definition)
+                for case in ordered_failures[:20]
+            )
+            if include_failure_cases
+            else ()
         )
         ordered_passes = sorted(
             main_passes,
@@ -83,9 +93,13 @@ def calculate_measurement_statistics(
                 case.worksheet_row,
             ),
         )
-        top_pass_cases = tuple(
-            _case_statistics(case, main_pivot, comparison_names, definition)
-            for case in ordered_passes[:5]
+        top_pass_cases = (
+            tuple(
+                _case_statistics(case, main_pivot, comparison_names, definition)
+                for case in ordered_passes[:5]
+            )
+            if include_pass_cases
+            else ()
         )
     else:
         top_failure_cases = ()

@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from pathlib import Path
 
-from .config import load_settings, load_test_filters
+from .config import load_custom_groups, load_settings, load_test_filters
 from .grouping import calculate_grouped_analyses
 from .models import AnalysisResult, MeasurementAnalysis
 from .report import write_html_report
@@ -16,6 +16,7 @@ from .workbook import load_measurements
 def analyze(settings_path: str | Path = "JUI.json") -> AnalysisResult:
     settings = load_settings(settings_path)
     test_filters = load_test_filters(settings_path)
+    custom_groups = load_custom_groups(settings_path) if settings.group_by else {}
     parsed_measurements = load_measurements(
         settings.excel_file_path,
         settings.compliance_sheet_name,
@@ -35,6 +36,9 @@ def analyze(settings_path: str | Path = "JUI.json") -> AnalysisResult:
             settings.group_by,
             settings.main_pivot,
             settings.acceptable_variation[measurement],
+            custom_groups=custom_groups,
+            include_failures=settings.include_group_failures,
+            include_marginal_passes=settings.include_group_marginal_passes,
         )
         measurement_analyses.append(
             MeasurementAnalysis(

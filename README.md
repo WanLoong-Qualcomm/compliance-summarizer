@@ -1,21 +1,23 @@
 # Compliance Summarizer
 
-Compliance Summarizer v0.2 reads a SIGPATH compliance workbook, calculates
-deterministic compliance statistics for each selected measurement, and creates
-a standalone HTML report.
-Pass/fail calculations use `wcMargin`; the workbook's `Result?` field is shown
-only as source context.
+Compliance Summarizer 0.2.0 is a deterministic Python command-line tool for
+processing a SIGPATH compliance workbook and producing a standalone HTML
+report. It currently bypasses model calls: all pass/fail decisions,
+comparisons, warnings, and report values come from application code.
 
-## Setup with uv
+Pass/fail calculations use `wcMargin`. The workbook's `Result?` field is
+retained as source context only and is never used in a calculation.
+
+## Setup
 
 Python 3.12 or newer is required. Install the locked application and test
-dependencies with:
+dependencies with `uv`:
 
 ```powershell
 uv sync --dev
 ```
 
-On a network that uses a custom certificate authority, use:
+On a network that uses a custom certificate authority:
 
 ```powershell
 uv --system-certs sync --dev
@@ -35,33 +37,38 @@ Edit `JUI.json`, especially `excel_file_path` and `main_pivot`, then run:
 uv run compliance-summarizer
 ```
 
-By default, the report is written to `compliance-summary.html`. To select paths
-or replace an existing report:
+The default output is `compliance-summary.html`. To select a different path or
+replace an existing report:
 
 ```powershell
 uv run compliance-summarizer --settings .\JUI.json `
   --output .\reports\summary.html --overwrite
 ```
 
-The current settings fields are:
+The settings file may be named differently. Relative workbook paths are
+resolved relative to the settings file; absolute `.xlsx` and `.xlsm` paths are
+also accepted. The supported fields are:
 
-| Field | Requirement |
+| Field | Behavior |
 | --- | --- |
-| `excel_file_path` | Existing `.xlsx` or `.xlsm`, relative to the settings file or absolute. |
-| `compliance_sheet_name` | Worksheet containing the compliance table. |
+| `excel_file_path` | Existing `.xlsx` or `.xlsm` workbook. |
+| `compliance_sheet_name` | Worksheet containing the SIGPATH compliance table. |
 | `block` | Must be `SIGPATH`. |
 | `testnames` | Non-empty list selected from `GAIN`, `GAIN-DNL`, `GCIB`, `IP2ACS`, `IP2IB`, `IP3ACS`, `IP3IB`, `S11-LOW`, `S11-MID`, `S11-HIGH`, and `SSNFWSPURREMOVAL`. |
-| `acceptable_variation` | One finite, non-negative value for every selected measurement. |
-| `background_information` | Optional report context string. |
-| `main_pivot` | Exact pivot name discovered in row 2. |
-| `group_by` | Optional row-4 metadata columns used for grouped analysis. Field names are discovered from the selected workbook; `Result?`, `LL`, and `UL` are excluded. Empty preserves the overall-only report. |
-| `bypass_model` | Must be `true` in the current scope. |
+| `acceptable_variation` | One finite, non-negative tolerance for every selected measurement. |
+| `background_information` | Optional text rendered in the run configuration. It is not sent to a model in the current scope. |
+| `main_pivot` | Exact pivot name discovered in row 2. It is the baseline for every comparison. |
+| `group_by` | Optional row-4 metadata fields or named schemes from `configs/groups.json`. `Result?`, `LL`, and `UL` cannot be used as source fields. Empty means overall analysis only. |
+| `include_group_failures` | Boolean. When `true`, each valid group includes its top-20 failure table. Defaults to `false`. |
+| `include_group_marginal_passes` | Boolean. When `true`, each valid group includes its top-5 marginal-pass table. Defaults to `false`. |
+| `bypass_model` | Must be `true` in version 0.2.0. |
 
-The active local configuration is `JUI.json`.
+Optional per-measurement row filters are loaded from
+`configs/test_filters.json` under the settings file's directory. Every field
+in a measurement's filter must match for a row to be included. String matches
+are trimmed and case-insensitive; non-string values use normal equality.
 
-Optional per-testname row filters are read from `configs/test_filters.json`
-beside `JUI.json`. The current structure maps each testname to metadata fields
-and their allowed values, for example:
+For example:
 
 ```json
 {
@@ -69,62 +76,123 @@ and their allowed values, for example:
 }
 ```
 
-Rows must match every configured field filter to be included in that
-testname's coverage and statistics. Filtered rows are reported as a coverage
-note.
+Excluded rows are reported as a coverage note.
+
+Named custom grouping schemes are loaded from `configs/groups.json`. Each
+scheme names a source metadata field, maps allowed values to group labels, and
+provides a default for blank or unmatched values:
+
+```json
+{
+  "sigpath-block": {
+    "field": "MEASPORT",
+    "groups": {
+      "LB": ["L1", "L2"]
+    },
+    "default": "OTHER"
+  }
+}
+```
+
+Reference a scheme by name in `group_by`, and combine it with raw metadata
+fields when needed:
+
+```json
+"group_by": ["sigpath-block", "TEMP"]
+```
+
+Custom group matching trims and compares strings case-insensitively, supports
+numeric/string equivalence, and supports valid JSON scalar, list, and object
+values. Blank source values and values that match no configured group use the
+scheme's `default` label. Scheme names are normalized like metadata headers.
 
 ## Workbook contract
 
-- Row 2 contains pivot names (merged pivot cells are supported).
-- Row 3 contains pivot statistics.
-- Row 4 contains workbook-defined metadata headers and pivot display columns.
-- Data starts at row 5.
-- Every pivot must contain `wcMargin` and at least one of `MEAN` or
-  `NN_25c AVG`. When both are present, calculations use `MEAN`; otherwise
-  they use whichever one is available. `MIN`, `MAX`, and `wcValue` are
-  retained when present.
-- `TESTNAME` and `MEASPORT` are the only required row-4 metadata fields. Every
-  other row-4 metadata field is optional and is discovered dynamically, so
-  fields such as `TEMP` can be added or omitted without changing the parser.
-  All discovered metadata fields are retained in report tables and signal-path
-  identity, except `Result?`, `LL`, and `UL`, which remain source context or
-  limit fields and are excluded from identity/grouping.
+The configured worksheet uses this layout:
 
-Missing or invalid required numeric pivot values are reported as coverage gaps.
-They remain blank in the HTML report and are excluded only from the affected
-metrics. Main pivot statistics use every valid main-pivot value even when
-another pivot is missing. Pairwise summary metrics include only rows where
-both selected comparison values are valid. Rates are calculated with their denominators
-internally but displayed as percentages only; a rate with no valid pairs is
-blank.
+- row 2 contains pivot names; merged pivot cells are supported;
+- row 3 contains recognized pivot statistics;
+- row 4 contains workbook-defined metadata headers and pivot display columns;
+- row 5 onward contains data.
 
-`GAIN-DNL` compares each pivot's absolute deviation from the row's `LL`/`UL`
-midpoint. It uses `other deviation - main deviation`, because smaller
-deviation is better. Rows with missing or invalid `LL`/`UL` values generate a
-coverage warning and are excluded from affected comparisons. `GCIB` and the
-the three `S11` measurements and `SSNFWSPURREMOVAL` use `other - main`
-because lower is better. `IP2ACS`, `IP2IB`, `IP3ACS`, and `IP3IB` use
-`main - other` because higher is better.
+`TESTNAME` and `MEASPORT` are the only required row-4 metadata fields. All
+other row-4 metadata fields are discovered dynamically and retained in case
+identity and ranked report tables. `Result?`, `LL`, and `UL` are retained as
+source context or limits but are excluded from case identity and grouping.
 
-The report is a standalone HTML file. Run configuration appears once at the
-start, followed by a complete summary for each selected measurement:
+Each pivot must contain `wcMargin` and at least one of `MEAN` or `NN_25C AVG`.
+When both comparison-statistic columns exist, `MEAN` is preferred. The parser
+also retains `MIN`, `MAX`, and `wcValue` when present. Recognized statistic
+names are case-insensitive for `MIN`, `MAX`, `MEAN`, `NN_25C AVG`, `wcMargin`,
+and `wcValue`.
 
+The workbook is opened read-only with cached values. It is not modified and
+macros are not executed.
+
+## Calculations and coverage
+
+- Negative valid `wcMargin` values are failures; non-negative values are passes.
+- Blank, malformed, and non-finite required numeric values are coverage gaps,
+  not failures.
+- Per-pivot failure statistics use every valid `wcMargin` for that pivot,
+  independently of other pivots.
+- Pairwise comparison statistics use only rows where both selected comparison
+  values are valid. A missing comparison value leaves the corresponding ranked
+  table cell blank.
+- Rates use their valid-pair denominators internally and are displayed as
+  percentages. A rate with no valid pairs is blank.
+- `GAIN-DNL` compares absolute deviation from the row's `LL`/`UL` midpoint.
+  Missing or invalid limits produce a warning and exclude that row only from
+  affected comparisons.
+
+Comparison values use `MEAN` when that column is available for the pivot and
+otherwise use `NN_25C AVG`. The report-oriented delta is signed so degradation
+is negative and improvement is positive:
+
+| Measurements | Better direction | Report-oriented delta |
+| --- | --- | --- |
+| `GAIN`, `IP2ACS`, `IP2IB`, `IP3ACS`, `IP3IB` | Higher | main value − comparison value |
+| `GCIB`, `S11-LOW`, `S11-MID`, `S11-HIGH`, `SSNFWSPURREMOVAL` | Lower | comparison value − main value |
+| `GAIN-DNL` | Smaller midpoint deviation | comparison deviation − main deviation |
+
+An absolute oriented delta within the inclusive `acceptable_variation` is
+classified as unchanged.
+
+## Grouped analysis
+
+With `group_by: []`, the report contains only the overall analysis. With one or
+more raw metadata fields or named custom schemes, rows are partitioned by the
+unique combination of those grouping dimensions and the same deterministic
+calculations are run independently for each group.
+
+Blank, empty, and whitespace-only group values are displayed as `(blank)`.
+Reordering `group_by` changes label order only, not group membership. A custom
+scheme displays its scheme name and resolved label, for example
+`sigpath-block=LB`. A group with no valid main-pivot `wcMargin` is skipped and
+reported as a coverage warning.
+
+Grouped sections always include pivot compliance and pivot comparisons. Their
+top-20 failure and top-5 marginal-pass tables are controlled independently by
+`include_group_failures` and `include_group_marginal_passes`.
+
+## Report contents
+
+The standalone HTML report contains no external assets or charts. It includes:
+
+- run configuration;
+- one complete overall summary for each selected measurement;
 - coverage and validation warnings;
-- per-pivot compliance statistics based on `wcMargin`;
-- main-pivot comparisons using signed degradation and improvement values;
-- an Excel-style top-20 main-pivot failure table;
-- an Excel-style top-5 main-pivot pass-case table, ordered by ascending `wcMargin`;
-- grouped per-pivot statistics and comparisons when `group_by` is non-empty; and
-- methodology and assumptions once at the end of the report.
+- per-pivot compliance statistics;
+- main-pivot comparisons against every other pivot;
+- an overall top-20 main-pivot failure table;
+- an overall top-5 main-pivot marginal-pass table;
+- grouped analysis sections when `group_by` is non-empty; and
+- methodology and assumptions.
 
-Grouped reports use the same compact tables and percentage-only presentation as
-the overall report. They exclude the top-20 failure table. Blank grouping values
-are shown as `(blank)`, and groups without valid main-pivot `wcMargin` values
-are skipped with a validation warning.
-
-Unexpected calculation failures are rendered as bold red `ERROR` text. The
-source `Result?` value is retained for context and is never used for a
-calculation. The report contains no external assets or charts.
+The ranked tables retain worksheet row, discovered metadata, source pivot
+fields, `Result?`, limits, and signed comparison deltas. Expected unavailable
+values render blank. Unexpected calculation failures render as bold red
+`ERROR`.
 
 ## Test
 
@@ -132,5 +200,5 @@ calculation. The report contains no external assets or charts.
 uv run pytest
 ```
 
-The current scope excludes external model calls, a graphical UI, and workbook
-modification.
+The current scope excludes external model calls, a graphical user interface,
+workbook modification, charts, and additional report formats.
