@@ -14,23 +14,22 @@ def test_load_settings_resolves_workbook_relative_to_settings(
     tmp_path, workbook_factory, sample_rows
 ):
     workbook = workbook_factory(sample_rows)
-    path = write_settings(tmp_path / "settings.json", workbook)
+    path = write_settings(tmp_path / "JUI.json", workbook)
 
     settings = load_settings(path)
 
     assert settings.excel_file_path == workbook.resolve()
-    assert settings.measurements == ("GAIN",)
+    assert settings.testnames == ("GAIN",)
     assert settings.acceptable_variation == {"GAIN": 0.2}
 
 
 @pytest.mark.parametrize(
     ("override", "message"),
     [
-        ({"test": "OTHER"}, "SIGPATH"),
-        ({"measurements": []}, "measurements.*GAIN"),
+        ({"block": "OTHER"}, "SIGPATH"),
+        ({"testnames": []}, "testnames.*GAIN"),
         ({"acceptable_variation": {"GAIN": -0.1}}, "non-negative"),
         ({"group_by": ["Result?"]}, "Unsupported.*group_by"),
-        ({"aggregate_port_groups": True}, "group_by"),
         ({"bypass_model": False}, "must be true"),
     ],
 )
@@ -38,7 +37,7 @@ def test_rejects_invalid_configuration(
     tmp_path, workbook_factory, sample_rows, override, message
 ):
     workbook = workbook_factory(sample_rows)
-    path = write_settings(tmp_path / "settings.json", workbook, **override)
+    path = write_settings(tmp_path / "JUI.json", workbook, **override)
 
     with pytest.raises(ConfigurationError, match=message):
         load_settings(path)
@@ -49,20 +48,41 @@ def test_load_settings_accepts_and_normalizes_group_by(
 ):
     workbook = workbook_factory(sample_rows)
     path = write_settings(
-        tmp_path / "settings.json",
+        tmp_path / "JUI.json",
         workbook,
-        group_by=[" lnamode ", "CHANNEL"],
+        group_by=[" custom_field ", "CHANNEL"],
     )
 
     settings = load_settings(path)
 
-    assert settings.group_by == ("LNAMODE", "CHANNEL")
+    assert settings.group_by == ("CUSTOM_FIELD", "CHANNEL")
+
+
+def test_load_settings_accepts_multiple_supported_measurements(
+    tmp_path, workbook_factory, sample_rows
+):
+    workbook = workbook_factory(sample_rows)
+    path = write_settings(
+        tmp_path / "JUI.json",
+        workbook,
+        testnames=["gain", "GCIB", "S11-low"],
+        acceptable_variation={"GAIN": 0.2, "GCIB": 0.3, "S11-LOW": 0.1},
+    )
+
+    settings = load_settings(path)
+
+    assert settings.testnames == ("GAIN", "GCIB", "S11-LOW")
+    assert settings.acceptable_variation == {
+        "GAIN": 0.2,
+        "GCIB": 0.3,
+        "S11-LOW": 0.1,
+    }
 
 
 def test_group_by_rejects_duplicate_fields(tmp_path, workbook_factory, sample_rows):
     workbook = workbook_factory(sample_rows)
     path = write_settings(
-        tmp_path / "settings.json",
+        tmp_path / "JUI.json",
         workbook,
         group_by=["MEASPORT", " measport "],
     )
@@ -72,7 +92,7 @@ def test_group_by_rejects_duplicate_fields(tmp_path, workbook_factory, sample_ro
 
 
 def test_create_template_does_not_overwrite(tmp_path):
-    path = tmp_path / "settings.json"
+    path = tmp_path / "JUI.json"
     create_settings_template(path)
     original = path.read_text(encoding="utf-8")
 

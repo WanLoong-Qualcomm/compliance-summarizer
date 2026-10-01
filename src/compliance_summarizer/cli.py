@@ -16,13 +16,13 @@ from .errors import ComplianceSummarizerError
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="compliance-summarizer",
-        description="Generate a deterministic SIGPATH GAIN compliance report.",
+        description="Generate deterministic SIGPATH compliance reports for selected measurements.",
     )
     parser.add_argument(
         "--settings",
         type=Path,
-        default=Path("settings.json"),
-        help="settings.json path (default: ./settings.json)",
+        default=Path("JUI.json"),
+        help="JUI.json path (default: ./JUI.json)",
     )
     parser.add_argument(
         "--output",
@@ -60,17 +60,22 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"Error: {error}", file=sys.stderr)
         return 2
 
-    main_stats = next(
-        item
-        for item in analysis.statistics.pivot_statistics
-        if item.pivot == analysis.statistics.main_pivot
-    )
-    print(f"Processed {analysis.statistics.case_count} GAIN row(s).")
-    print(
-        f"{analysis.statistics.main_pivot} failures: {main_stats.failure_rate.numerator}/"
-        f"{main_stats.failure_rate.denominator}."
-    )
-    print(f"Coverage warnings: {len(analysis.parsed.warnings)}.")
+    for item in analysis.measurement_analyses:
+        stats = item.statistics
+        main_stats = next(
+            pivot
+            for pivot in stats.pivot_statistics
+            if pivot.pivot == stats.main_pivot
+        )
+        print(f"Processed {stats.case_count} {stats.measurement} row(s).")
+        print(
+            f"{stats.main_pivot} failures: {main_stats.failure_rate.numerator}/"
+            f"{main_stats.failure_rate.denominator}."
+        )
+        print(
+            f"{stats.measurement} coverage warnings: "
+            f"{len(item.parsed.warnings) + len(item.group_warnings)}."
+        )
     print("AI generation: bypassed.")
     print(f"Report written to: {output}")
     return 0

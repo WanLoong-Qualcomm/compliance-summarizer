@@ -1,0 +1,10 @@
+{
+    "sigpath-blocks": {
+        "column": "measport",
+        "groups": {
+            "LB" : [],
+            "MHB": [],
+            "UNA": ["UNA", "UNAM"]
+        }
+    }
+}

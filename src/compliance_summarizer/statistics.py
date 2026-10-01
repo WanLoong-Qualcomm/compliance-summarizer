@@ -151,11 +151,11 @@ def _case_statistics(
     comparison_names: tuple[str, ...],
     definition: MeasurementDefinition,
 ) -> FailureCaseStatistics:
-    main_average = _value(case, main_pivot, definition.comparison_statistic)
+    main_average = _comparison_value(case, main_pivot, definition)
     comparison_values: dict[str, float | None] = {}
     deltas: dict[str, float | None] = {}
     for pivot in comparison_names:
-        comparison = _value(case, pivot, definition.comparison_statistic)
+        comparison = _comparison_value(case, pivot, definition)
         comparison_values[pivot] = comparison
         if main_average is None or comparison is None:
             deltas[pivot] = None
@@ -189,8 +189,8 @@ def _comparison_statistics(
     main_only_count = 0
     calculation_error = False
     for case in parsed.cases:
-        main = _value(case, main_pivot, definition.comparison_statistic)
-        comparison = _value(case, comparison_pivot, definition.comparison_statistic)
+        main = _comparison_value(case, main_pivot, definition)
+        comparison = _comparison_value(case, comparison_pivot, definition)
         if main is not None and comparison is None:
             main_only_count += 1
         if main is not None and comparison is not None:
@@ -252,6 +252,20 @@ def _comparison_statistics(
 
 def _value(case: ComplianceCase, pivot: str, statistic: str) -> float | None:
     return case.pivot_values[pivot].get(statistic)
+
+
+def _comparison_value(
+    case: ComplianceCase,
+    pivot: str,
+    definition: MeasurementDefinition,
+) -> float | None:
+    values = case.pivot_values[pivot]
+    for statistic in definition.comparison_statistics:
+        if statistic in values:
+            return definition.transform_comparison_value(
+                values[statistic], case.metadata_values
+            )
+    return None
 
 
 def _identity_sort_key(identity: tuple[tuple[str, object], ...]) -> tuple[str, ...]:

@@ -14,13 +14,12 @@ CALCULATION_ERROR = "ERROR"
 class Settings:
     excel_file_path: Path
     compliance_sheet_name: str
-    test: str
-    measurements: tuple[str, ...]
+    block: str
+    testnames: tuple[str, ...]
     acceptable_variation: dict[str, float]
     background_information: str
     main_pivot: str
     group_by: tuple[str, ...]
-    aggregate_port_groups: bool
     bypass_model: bool
 
 
@@ -33,7 +32,7 @@ class PivotSchema:
 @dataclass(frozen=True, slots=True)
 class SheetSchema:
     name: str
-    fixed_columns: dict[str, int]
+    metadata_columns: dict[str, int]
     pivots: tuple[PivotSchema, ...]
     data_start_row: int = 5
 
@@ -46,7 +45,7 @@ class SheetSchema:
 class ComplianceCase:
     worksheet_row: int
     identity: tuple[tuple[str, Any], ...]
-    fixed_values: dict[str, Any]
+    metadata_values: dict[str, Any]
     pivot_values: dict[str, dict[str, float | None]]
     pivot_raw_values: dict[str, dict[str, Any]]
 
@@ -131,11 +130,33 @@ class GroupedAnalysis:
 
 
 @dataclass(frozen=True, slots=True)
-class AnalysisResult:
-    settings: Settings
+class MeasurementAnalysis:
+    measurement: str
     parsed: ParsedMeasurement
     statistics: MeasurementStatistics
-    generated_at: str
-    notes: tuple[str, ...] = field(default_factory=tuple)
     grouped_analyses: tuple[GroupedAnalysis, ...] = field(default_factory=tuple)
     group_warnings: tuple[str, ...] = field(default_factory=tuple)
+
+
+@dataclass(frozen=True, slots=True)
+class AnalysisResult:
+    settings: Settings
+    measurement_analyses: tuple[MeasurementAnalysis, ...]
+    generated_at: str
+    notes: tuple[str, ...] = field(default_factory=tuple)
+
+    @property
+    def parsed(self) -> ParsedMeasurement:
+        return self.measurement_analyses[0].parsed
+
+    @property
+    def statistics(self) -> MeasurementStatistics:
+        return self.measurement_analyses[0].statistics
+
+    @property
+    def grouped_analyses(self) -> tuple[GroupedAnalysis, ...]:
+        return self.measurement_analyses[0].grouped_analyses
+
+    @property
+    def group_warnings(self) -> tuple[str, ...]:
+        return self.measurement_analyses[0].group_warnings

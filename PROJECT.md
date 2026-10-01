@@ -89,20 +89,26 @@ The pipeline should expose structured intermediate results between stages. This 
 The sample/reference workbook uses the `Combined` sheet with the following layout:
 
 - **Row 2:** Pivot names, such as `DUT-1_VAR1`, `DUT-2_VAR1`, and `DUT-3_VAR2`.
-- **Row 3:** Pivot fields, such as `MIN`, `MAX`, and `NN_25c AVG`.
-- **Row 4:** Measurement/input column headers, such as `LNAMODE` and `CAMODE`.
+- **Row 3:** Pivot fields, such as `MIN`, `MAX`, `MEAN`, and `NN_25c AVG`.
+- **Row 4:** Workbook-defined metadata/input column headers, such as `LNAMODE`,
+  `CAMODE`, or `TEMP`.
 
-The v0.1 SIGPATH contract requires the identifying fields, `Result?`, `LL`,
-and `UL`. `BW` and `F0_MHZ` are optional fixed fields. Pivot statistics must
-include `NN_25c AVG` and `wcMargin`; `MIN`, `MAX`, and `wcValue` are retained
-when present.
+`TESTNAME` and `MEASPORT` are the only required row-4 metadata fields. Every
+other metadata field is optional and discovered from the workbook. All
+discovered metadata fields are retained in report tables and case identity;
+`Result?`, `LL`, and `UL` are retained as source context/limits but excluded
+from case identity and grouping. Pivot statistics must include `wcMargin` and
+at least one of `MEAN` or `NN_25c AVG`. If both are present, calculations use
+`MEAN`; otherwise they use the available alternative. `MIN`, `MAX`, and
+`wcValue` are retained when present.
 
 The parser should treat the header locations and required fields as part of a test-specific data contract rather than scattering row numbers throughout the implementation.
 
 ### 5.2 Required metric fields
 
 - `wcMargin` is the authoritative field for compliance pass/fail.
-- `NN_25c AVG` is the field used to calculate degradation or improvement comparisons.
+- `MEAN` is preferred for degradation or improvement comparisons; `NN_25c AVG`
+  is the fallback when `MEAN` is unavailable.
 - The `Result?` column is display-only for compliance calculations and must not determine pass/fail rates or other compliance metrics.
 
 ### 5.3 Coverage gaps
@@ -122,7 +128,8 @@ For comparisons based on paired values:
 - **Paired summary metrics:** use an inner join on rows where both pivots have valid values. Exclude incomplete pairs from the mean, maximum, and rate calculations.
 - **Main-pivot failure metrics:** calculate them from valid main-pivot values even when a comparison pivot has a coverage gap.
 
-The exact row key used to pair pivots must be stable and derived from the measurement's identifying columns. It must not rely on incidental Excel row order.
+The exact row key used to pair pivots must be stable and derived from the
+available metadata identity. It must not rely on incidental Excel row order.
 
 ## 6. Statistics and reporting requirements
 
@@ -132,11 +139,12 @@ Calculate independently for each pivot:
 
 - failure rate, using negative `wcMargin` values as failures;
 - worst `wcMargin`;
-- the failure path, meaning the complete combination of identifying columns for the main pivot's worst failure;
+- the failure path, meaning the complete available metadata identity for the
+  main pivot's worst failure;
 - the top 20 main-pivot failure cases, ordered by ascending main-pivot `wcMargin` so the most negative value appears first;
 - the top 5 main-pivot passing cases, ordered by ascending non-negative main-pivot `wcMargin` so the cases closest to the compliance limit appear first;
 - the original compliance fields for each ranked case; and
-- the signed delta between the main pivot and every other pivot for each ranked failure and pass case, using `NN_25c AVG` and the measurement-specific comparison direction. Degradation is negative and improvement is positive.
+- the signed delta between the main pivot and every other pivot for each ranked failure and pass case, using the preferred `MEAN`/`NN_25c AVG` comparison statistic and the measurement-specific comparison direction. Degradation is negative and improvement is positive.
 
 ### 6.2 Measurement comparison statistics
 
@@ -159,8 +167,11 @@ Classification must account for the configured acceptable variation. In general,
 The comparison direction is defined by the measurement, not globally. The delta is always expressed as the main-pivot value relative to the comparison-pivot value, but the sign's meaning depends on whether higher or lower values are better. For example, for `GAIN`, higher is better and:
 
 ```text
-delta = main_pivot[NN_25c AVG] - comparison_pivot[NN_25c AVG]
+delta = main_pivot[comparison statistic] - comparison_pivot[comparison statistic]
 ```
+
+The comparison statistic is `MEAN` when that pivot provides it; otherwise it
+is `NN_25c AVG`.
 
 For `GAIN`, a positive delta means the main pivot has higher gain and is an improvement; a negative delta means the main pivot has lower gain and is a degradation. A delta within the configured acceptable variation is unchanged. Other measurements must define their own direction and formula explicitly.
 
@@ -199,8 +210,8 @@ Grouping behavior is defined as follows:
   although report labels may follow the configured field order.
 - Blank, empty, and whitespace-only grouping values are represented by the
   explicit value `(blank)` and are not discarded.
-- Only identifying/compliance dimensions may be selected. `Result?`, `LL`, and
-  `UL` are not valid grouping fields.
+- Any discovered metadata field may be selected. `Result?`, `LL`, and `UL` are
+  not valid grouping fields.
 - A group with no valid main-pivot `wcMargin` values is omitted from grouped
   statistics and contributes a warning in the existing coverage-and-validation
   warning list. It does not prevent other groups from being reported.
@@ -216,18 +227,17 @@ be opened without a separate assets directory.
 
 ## 7. Configuration
 
-`settings.json` is the runtime configuration. Its fields are:
+`JUI.json` is the runtime configuration. Its fields are:
 
 - `excel_file_path`: user-selected input workbook path;
 - `compliance_sheet_name`: compliance sheet name;
-- `test`: selected test family;
-- `measurements`: selected measurements;
+- `block`: selected test family;
+- `testnames`: selected measurements;
 - `acceptable_variation`: tolerance per measurement;
 - `background_information`: optional context for report generation;
 - `main_pivot`: baseline pivot;
-- `group_by`: optional identifying/compliance fields for grouped analysis;
-- `aggregate_port_groups`: the v0.1 compatibility field; grouped analysis is
-  controlled by `group_by` in v0.2; and
+- `group_by`: optional discovered row-4 metadata fields for grouped analysis;
+  `Result?`, `LL`, and `UL` cannot be used;
 - `bypass_model`: whether AI generation is bypassed.
 
 Configuration validation should catch incompatible combinations, such as a configured measurement without an acceptable variation or a main pivot that is not present in the user-selected workbook.
@@ -237,7 +247,7 @@ Configuration validation should catch incompatible combinations, such as a confi
 ### Scope
 
 - Implement the end-to-end application workflow.
-- Use `settings.json` as the runtime configuration interface.
+- Use `JUI.json` as the runtime configuration interface.
 - Support the `SIGPATH` test only.
 - Support the `GAIN` measurement only.
 - Do not implement aggregation or aggregate-centric charts yet.
@@ -252,7 +262,8 @@ Configuration validation should catch incompatible combinations, such as a confi
 2. Invalid configuration and irrecoverable workbook errors stop processing with actionable messages.
 3. Coverage gaps are detected, summarized, and excluded according to the metric-specific rules.
 4. Pass/fail statistics use `wcMargin`, never `Result?`.
-5. Degradation and improvement use `NN_25c AVG` and the configured acceptable variation.
+5. Degradation and improvement use preferred `MEAN`/`NN_25c AVG` values and
+   the configured acceptable variation.
 6. The report includes the required measurement statistics and top-20 main-pivot failure table.
 7. The output is a self-contained HTML file with no external assets.
 8. Expected unavailable values render as blank, while unexpected calculation
@@ -328,9 +339,10 @@ The original open questions are resolved for v0.1 as follows:
    repository sample is `EXAMPLE.xlsm`; the generated template uses the
    placeholder path `./REFERENCE.xlsm`, which must be edited before running.
 2. **Measurement definitions:** Each measurement owns its comparison direction
-   and delta orientation. GAIN uses `main NN_25c AVG - comparison NN_25c AVG`,
-   with negative values meaning degradation and positive values meaning
-   improvement.
+   and delta orientation. GAIN uses the main-pivot comparison statistic minus
+   the comparison-pivot comparison statistic, preferring `MEAN` and falling
+   back to `NN_25c AVG`, with negative values meaning degradation and positive
+   values meaning improvement.
 3. **Missing and invalid values:** Blank, malformed, and non-finite required
    pivot values are expected coverage gaps. They remain blank, are not
    compliance failures, and are excluded only from affected metrics.
@@ -357,13 +369,13 @@ future decisions are:
 
 ### Objective
 
-Enable grouped compliance analysis using user-selected identifying/compliance
+Enable grouped compliance analysis using user-selected workbook metadata
 columns while preserving the current v0.1 overall report and presentation
 conventions.
 
 ### Scope
 
-- Accept a non-empty `group_by` list of allowed identifying/compliance fields.
+- Accept a non-empty `group_by` list of discovered workbook metadata fields.
 - Partition rows by unique combinations of those fields.
 - Run the existing deterministic compliance and comparison calculations
   independently for each group.
@@ -403,9 +415,36 @@ conventions.
 ### Compatibility and migration notes
 
 - Existing `group_by: []` settings retain v0.1 behavior.
-- `aggregate_port_groups` does not define an additional grouping mode in v0.2;
-  `group_by` is the source of truth for grouped analysis.
 
 ### Open questions
 
 - None for the v0.2 grouped-analysis behavior described above.
+
+## Current multi-measurement revision
+
+The workflow supports the following SIGPATH measurements:
+
+- `GAIN`;
+- `GAIN-DNL`;
+- `GCIB`;
+- `IP2ACS` and `IP2IB`;
+- `IP3ACS` and `IP3IB`; and
+- `S11-LOW`, `S11-MID`, and `S11-HIGH`.
+
+The configured measurements are loaded in one workbook pass and each receives
+an independent copy of the current report summary. All measurements use the
+source `wcMargin` for compliance. Comparison values use `MEAN` when available,
+otherwise `NN_25C AVG`.
+
+Optional measurement-specific row filters are loaded from
+`configs/test_filters.json` beside `JUI.json`. The structure maps a testname to
+metadata fields and allowed values; all fields in a testname's filter must
+match for a row to be included. For example, `IP2ACS` can restrict `CHANNEL`
+to `IQ` without changing the workbook schema or the main settings contract.
+
+`GAIN-DNL` transforms each pivot comparison value into its absolute deviation
+from the row-level `LL`/`UL` midpoint. Because smaller deviation is better,
+its oriented comparison is `other deviation - main deviation`. Missing or
+invalid `LL`/`UL` values produce a coverage warning and are excluded only from
+affected comparisons. `GCIB` and the `S11` measurements use `other - main`;
+the `IP2` and `IP3` measurements use `main - other`.

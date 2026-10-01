@@ -1,0 +1,18 @@
+{
+    "IP2ACS":
+    {
+        "CHANNEL" : ["IQ"]
+    },
+    "IP2IB":
+    {
+        "CHANNEL" : ["IQ"]
+    },
+    "IP3ACS":
+    {
+        "CHANNEL" : ["IQ"]
+    },
+    "IP3IB":
+    {
+        "CHANNEL" : ["IQ"]
+    }
+}

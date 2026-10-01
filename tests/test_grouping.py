@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import pytest
+
 from compliance_summarizer.app import analyze
+from compliance_summarizer.errors import WorkbookValidationError
 from compliance_summarizer.grouping import calculate_grouped_analyses
 from compliance_summarizer.report import render_html
 from compliance_summarizer.workbook import load_measurement
@@ -59,6 +62,39 @@ def test_grouping_field_order_does_not_change_membership(
     }
 
 
+def test_grouping_accepts_arbitrary_metadata_field(workbook_factory, sample_rows):
+    rows = [
+        {**row, "TEMP": temperature}
+        for row, temperature in zip(sample_rows[:3], (-50, 25, -50), strict=True)
+    ]
+    parsed = load_measurement(
+        workbook_factory(rows, extra_headers=("TEMP",)),
+        "Combined",
+    )
+
+    grouped, warnings = calculate_grouped_analyses(
+        parsed, ("TEMP",), "DUT-1_VAR1", 0.2
+    )
+
+    assert warnings == ()
+    assert [item.group_key for item in grouped] == [
+        (("TEMP", -50),),
+        (("TEMP", 25),),
+    ]
+    assert [item.statistics.case_count for item in grouped] == [2, 1]
+
+
+def test_grouping_reports_metadata_field_absent_from_workbook(
+    workbook_factory, sample_rows
+):
+    parsed = load_measurement(workbook_factory(sample_rows[:3]), "Combined")
+
+    with pytest.raises(WorkbookValidationError, match="absent from worksheet"):
+        calculate_grouped_analyses(
+            parsed, ("CUSTOM_FIELD",), "DUT-1_VAR1", 0.2
+        )
+
+
 def test_blank_group_is_explicit_and_groups_without_margin_are_skipped(
     workbook_factory, sample_rows
 ):
@@ -83,7 +119,7 @@ def test_grouped_report_follows_overall_report_and_omits_group_top_twenty(
 ):
     workbook = workbook_factory(sample_rows[:3])
     settings = write_settings(
-        tmp_path / "settings.json",
+        tmp_path / "JUI.json",
         workbook,
         group_by=["CHANNEL"],
     )
@@ -120,7 +156,7 @@ def test_skipped_group_warning_uses_existing_warning_list(
     rows[1]["DUT-1_VAR1"]["wcMargin"] = None
     workbook = workbook_factory(rows)
     settings = write_settings(
-        tmp_path / "settings.json",
+        tmp_path / "JUI.json",
         workbook,
         group_by=["MEASPORT"],
     )

@@ -15,18 +15,21 @@ non-GAIN measurements remain outside v0.1.
 
 1. **Foundation and configuration**
    - Package and lock dependencies with `uv`.
-   - Validate every current `settings.json` field.
+   - Validate every current `JUI.json` field.
    - Reject unsupported v0.1 combinations with actionable messages.
 2. **Workbook contract and normalization**
    - Read `.xlsx`/`.xlsm` without saving or executing macros.
-   - Discover row-2 pivot names, row-3 statistics, and row-4 fixed headers.
+   - Discover row-2 pivot names, row-3 statistics, and workbook-defined row-4
+     metadata headers.
    - Retain raw values separately from normalized numeric values.
-   - Create stable case identities from SIGPATH identifying columns.
+   - Create stable case identities from every discovered metadata column except
+     `Result?`, `LL`, and `UL`.
 3. **Validation and deterministic statistics**
    - Treat blank, malformed, and non-finite required pivot values as coverage
      gaps and exclude them only from affected denominators.
    - Calculate compliance exclusively from `wcMargin`.
-   - Compare every pivot with the main pivot using paired `NN_25C AVG` values.
+   - Compare every pivot with the main pivot using paired `MEAN` values when
+     available, otherwise paired `NN_25C AVG` values.
    - Produce per-pivot failure statistics, worst paths, comparison rates and
      signed extrema, average degradation and improvement, and the top 20
      failures and the top 5 passing cases.
@@ -50,16 +53,21 @@ non-GAIN measurements remain outside v0.1.
 - An unexpected calculation failure is represented by the literal `ERROR`.
   The HTML renderer displays it in bold red text instead of silently leaving a
   blank.
-- Comparison rates use valid paired `NN_25C AVG` values internally, but the
-  report shows percentages only. Rates with no valid pairs are blank.
+- Comparison rates use valid paired `MEAN` values when available and otherwise
+  `NN_25C AVG` values internally, but the report shows percentages only. Rates
+  with no valid pairs are blank.
 - Comparison deltas are oriented by the measurement definition. Degradation is
   negative, improvement is positive, and unchanged values are within the
   inclusive acceptable variation.
-- For GAIN, the raw delta is `main NN_25C AVG - comparison NN_25C AVG`.
+- For GAIN, the raw delta is the main-pivot comparison statistic minus the
+  comparison-pivot comparison statistic. `MEAN` is preferred over
+  `NN_25C AVG` per pivot.
 - The top-failure table contains exactly 20 rows when at least 20 failures
   exist. Ties use identifying fields and the source row as a final display-only
   tie breaker.
-- A case identity uses the available SIGPATH identifying columns. Duplicate
+- `TESTNAME` and `MEASPORT` are required row-4 metadata fields. All other
+  metadata fields are optional and discovered dynamically. A case identity uses
+  every available metadata field except `Result?`, `LL`, and `UL`. Duplicate
   identities produce a warning; the worksheet row is retained for traceability.
 - Comparison summaries contain signed maximum and average degradation plus
   signed maximum and average improvement, calculated across paired rows in
@@ -100,10 +108,9 @@ calculator and HTML presentation conventions.
 
 1. **Configuration and validation**
    - Accept a non-empty `group_by` list.
-   - Normalize field names and validate them against identifying/compliance
-     dimensions.
-   - Keep `aggregate_port_groups` as a compatibility field without giving it a
-     second grouping meaning.
+   - Normalize arbitrary workbook metadata field names. Reject only
+     `Result?`, `LL`, and `UL`; fields absent from the selected workbook are
+     reported during workbook/grouping validation.
 2. **Grouping layer**
    - Build one group for each unique combination of selected field values.
    - Normalize blank, empty, and whitespace-only values to `(blank)` for group

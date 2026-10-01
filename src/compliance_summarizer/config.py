@@ -1,4 +1,4 @@
-"""Load and validate the v0.2 ``settings.json`` contract."""
+"""Load and validate the v0.2 ``JUI.json`` contract."""
 
 from __future__ import annotations
 
@@ -9,20 +9,20 @@ from math import isfinite
 from pathlib import Path
 
 from .errors import ConfigurationError
+from .measurements import MEASUREMENTS
 from .models import Settings
-from .workbook import IDENTIFYING_HEADERS
+from .workbook import canonical_metadata_header, is_path_excluded_header
 
 
 DEFAULT_SETTINGS: dict[str, object] = {
     "excel_file_path": "./REFERENCE.xlsm",
     "compliance_sheet_name": "Combined",
-    "test": "SIGPATH",
-    "measurements": ["GAIN"],
+    "block": "SIGPATH",
+    "testnames": ["GAIN"],
     "acceptable_variation": {"GAIN": 0.2},
     "background_information": "",
     "main_pivot": "",
     "group_by": [],
-    "aggregate_port_groups": False,
     "bypass_model": True,
 }
 
@@ -31,7 +31,58 @@ def default_settings() -> dict[str, object]:
     return deepcopy(DEFAULT_SETTINGS)
 
 
-def create_settings_template(path: str | Path = "settings.json") -> Path:
+def load_test_filters(
+    settings_path: str | Path,
+) -> dict[str, dict[str, tuple[object, ...]]]:
+    """Load optional per-testname row filters beside the settings file."""
+
+    filter_path = Path(settings_path).resolve().parent / "configs" / "test_filters.json"
+    if not filter_path.is_file():
+        return {}
+    try:
+        payload = json.loads(filter_path.read_text(encoding="utf-8"))
+    except JSONDecodeError as error:
+        raise ConfigurationError(
+            f"Invalid JSON in '{filter_path}' at line {error.lineno}, "
+            f"column {error.colno}: {error.msg}."
+        ) from error
+    except OSError as error:
+        raise ConfigurationError(
+            f"Could not read test filter file '{filter_path}': {error}."
+        ) from error
+
+    if not isinstance(payload, dict):
+        raise ConfigurationError("The test filter root must be a JSON object.")
+
+    filters: dict[str, dict[str, tuple[object, ...]]] = {}
+    for raw_measurement, raw_rules in payload.items():
+        measurement = _nonempty_string(raw_measurement, "test filter testname").upper()
+        if measurement not in MEASUREMENTS:
+            raise ConfigurationError(
+                f"Unsupported test filter testname '{raw_measurement}'. Supported "
+                f"values: {', '.join(MEASUREMENTS)}."
+            )
+        if not isinstance(raw_rules, dict):
+            raise ConfigurationError(
+                f"Test filter '{measurement}' must contain a JSON object of fields."
+            )
+        normalized_rules: dict[str, tuple[object, ...]] = {}
+        for raw_field, raw_values in raw_rules.items():
+            field = canonical_metadata_header(raw_field)
+            if not field:
+                raise ConfigurationError(
+                    f"Test filter '{measurement}' contains a blank field name."
+                )
+            if type(raw_values) is not list or not raw_values:
+                raise ConfigurationError(
+                    f"Test filter '{measurement}.{field}' must be a non-empty list."
+                )
+            normalized_rules[field] = tuple(raw_values)
+        filters[measurement] = normalized_rules
+    return filters
+
+
+def create_settings_template(path: str | Path = "JUI.json") -> Path:
     target = Path(path)
     if target.exists():
         raise ConfigurationError(
@@ -50,7 +101,7 @@ def create_settings_template(path: str | Path = "settings.json") -> Path:
     return target
 
 
-def load_settings(path: str | Path = "settings.json") -> Settings:
+def load_settings(path: str | Path = "JUI.json") -> Settings:
     settings_path = Path(path)
     try:
         payload = json.loads(settings_path.read_text(encoding="utf-8"))
@@ -97,29 +148,63 @@ def load_settings(path: str | Path = "settings.json") -> Settings:
         )
 
     sheet = _nonempty_string(payload["compliance_sheet_name"], "compliance_sheet_name")
-    test = _nonempty_string(payload["test"], "test").upper()
-    if test != "SIGPATH":
-        raise ConfigurationError("v0.2 supports only test 'SIGPATH'.")
+    block = _nonempty_string(payload["block"], "block").upper()
+    if block != "SIGPATH":
+        raise ConfigurationError("v0.2 supports only block 'SIGPATH'.")
 
-    measurements_value = payload["measurements"]
-    if type(measurements_value) is not list or measurements_value != ["GAIN"]:
-        raise ConfigurationError("v0.2 'measurements' must be exactly ['GAIN'].")
+    testnames_value = payload["testnames"]
+    supported_measurements = tuple(MEASUREMENTS)
+    if type(testnames_value) is not list or not testnames_value:
+        raise ConfigurationError(
+            "'testnames' must be a non-empty list of supported values: "
+            + ", ".join(supported_measurements)
+            + "."
+        )
+    normalized_measurements: list[str] = []
+    for item in testnames_value:
+        if not isinstance(item, str) or not item.strip():
+            raise ConfigurationError(
+                "'testnames' must contain non-empty supported measurement names."
+            )
+        measurement = item.strip().upper()
+        if measurement not in MEASUREMENTS:
+            raise ConfigurationError(
+                f"Unsupported measurement '{item}'. Supported values: "
+                + ", ".join(supported_measurements)
+                + "."
+            )
+        if measurement in normalized_measurements:
+            raise ConfigurationError(
+                f"'testnames' contains duplicate measurement '{measurement}'."
+            )
+        normalized_measurements.append(measurement)
+    normalized_measurements_tuple = tuple(normalized_measurements)
 
     variation_value = payload["acceptable_variation"]
-    if type(variation_value) is not dict or set(variation_value) != {"GAIN"}:
-        raise ConfigurationError(
-            "'acceptable_variation' must contain exactly a GAIN value in v0.2."
-        )
-    gain_variation = variation_value["GAIN"]
     if (
-        isinstance(gain_variation, bool)
-        or not isinstance(gain_variation, (int, float))
-        or not isfinite(gain_variation)
-        or gain_variation < 0
+        type(variation_value) is not dict
+        or set(variation_value) != set(normalized_measurements_tuple)
     ):
         raise ConfigurationError(
-            "'acceptable_variation.GAIN' must be a finite non-negative number."
+            "'acceptable_variation' must contain exactly one value for each "
+            "selected measurement: "
+            + ", ".join(normalized_measurements_tuple)
+            + "."
         )
+    normalized_variation: dict[str, float] = {}
+    for measurement in normalized_measurements_tuple:
+        value = variation_value[measurement]
+        if (
+            isinstance(value, bool)
+            or not isinstance(value, (int, float))
+            or not isfinite(value)
+            or value < 0
+        ):
+            raise ConfigurationError(
+                f"'acceptable_variation.{measurement}' must be a finite "
+                "non-negative number."
+            )
+        normalized_variation[measurement] = float(value)
 
     background = payload["background_information"]
     if not isinstance(background, str):
@@ -130,15 +215,14 @@ def load_settings(path: str | Path = "settings.json") -> Settings:
     if type(group_by) is not list or any(not isinstance(item, str) for item in group_by):
         raise ConfigurationError("'group_by' must be a JSON list of strings.")
     normalized_group_by: list[str] = []
-    allowed_group_fields = ", ".join(IDENTIFYING_HEADERS)
     for item in group_by:
-        field = item.strip().upper()
+        field = canonical_metadata_header(item)
         if not field:
             raise ConfigurationError("'group_by' cannot contain blank field names.")
-        if field not in IDENTIFYING_HEADERS:
+        if is_path_excluded_header(field):
             raise ConfigurationError(
-                f"Unsupported 'group_by' field '{item}'. Allowed fields: "
-                f"{allowed_group_fields}."
+                f"Unsupported 'group_by' field '{item}': source-result and limit "
+                "fields cannot be used for grouping."
             )
         if field in normalized_group_by:
             raise ConfigurationError(
@@ -146,13 +230,6 @@ def load_settings(path: str | Path = "settings.json") -> Settings:
             )
         normalized_group_by.append(field)
 
-    aggregate = payload["aggregate_port_groups"]
-    if type(aggregate) is not bool:
-        raise ConfigurationError("'aggregate_port_groups' must be a boolean.")
-    if aggregate:
-        raise ConfigurationError(
-            "'aggregate_port_groups' must be false; use 'group_by' for grouped analysis."
-        )
     bypass = payload["bypass_model"]
     if bypass is not True:
         raise ConfigurationError("'bypass_model' must be true in v0.2.")
@@ -160,13 +237,12 @@ def load_settings(path: str | Path = "settings.json") -> Settings:
     return Settings(
         excel_file_path=workbook_path,
         compliance_sheet_name=sheet,
-        test=test,
-        measurements=("GAIN",),
-        acceptable_variation={"GAIN": float(gain_variation)},
+        block=block,
+        testnames=normalized_measurements_tuple,
+        acceptable_variation=normalized_variation,
         background_information=background,
         main_pivot=main_pivot,
         group_by=tuple(normalized_group_by),
-        aggregate_port_groups=False,
         bypass_model=True,
     )
 

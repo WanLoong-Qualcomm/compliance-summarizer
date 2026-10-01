@@ -6,12 +6,13 @@ from collections import Counter
 from contextlib import closing
 from math import isfinite
 from pathlib import Path
-from typing import Any
+from typing import Any, Mapping, Sequence
 
 from openpyxl import load_workbook
 from openpyxl.utils.exceptions import InvalidFileException
 
 from .errors import WorkbookValidationError
+from .measurements import get_measurement_definition, metadata_midpoint
 from .models import (
     ComplianceCase,
     CoverageSummary,
@@ -21,44 +22,18 @@ from .models import (
 )
 
 
-REQUIRED_FIXED_HEADERS = (
-    "LNAMODE",
-    "CAMODE",
-    "STD",
-    "BAND",
-    "MEASPORT",
-    "DLP",
-    "DIV",
-    "TESTNAME",
-    "GAINMODE",
-    "BBPATH",
-    "FREQ",
-    "CHANNEL",
-    "Result?",
-    "LL",
-    "UL",
+REQUIRED_METADATA_HEADERS = ("TESTNAME", "MEASPORT")
+PATH_EXCLUDED_HEADERS = ("Result?", "LL", "UL")
+_PATH_EXCLUDED_CANONICAL = frozenset(
+    "RESULT?" if header == "Result?" else header.upper()
+    for header in PATH_EXCLUDED_HEADERS
 )
-OPTIONAL_FIXED_HEADERS = ("BW", "F0_MHZ")
-IDENTIFYING_HEADERS = (
-    "LNAMODE",
-    "CAMODE",
-    "STD",
-    "BAND",
-    "BW",
-    "MEASPORT",
-    "DLP",
-    "DIV",
-    "F0_MHZ",
-    "TESTNAME",
-    "GAINMODE",
-    "BBPATH",
-    "FREQ",
-    "CHANNEL",
-)
-REQUIRED_PIVOT_STATISTICS = ("NN_25C AVG", "wcMargin")
+REQUIRED_PIVOT_STATISTICS = ("wcMargin",)
+ALTERNATIVE_PIVOT_STATISTICS = ("MEAN", "NN_25C AVG")
 RECOGNIZED_PIVOT_STATISTICS = (
     "MIN",
     "MAX",
+    "MEAN",
     "NN_25C AVG",
     "wcMargin",
     "wcValue",
@@ -69,8 +44,27 @@ def load_measurement(
     workbook_path: str | Path,
     sheet_name: str,
     measurement: str = "GAIN",
+    *,
+    test_filters: Mapping[str, Mapping[str, Sequence[object]]] | None = None,
 ) -> ParsedMeasurement:
     """Load and validate one measurement without modifying the source workbook."""
+
+    return load_measurements(
+        workbook_path,
+        sheet_name,
+        (measurement,),
+        test_filters=test_filters,
+    )[0]
+
+
+def load_measurements(
+    workbook_path: str | Path,
+    sheet_name: str,
+    measurements: Sequence[str],
+    *,
+    test_filters: Mapping[str, Mapping[str, Sequence[object]]] | None = None,
+) -> tuple[ParsedMeasurement, ...]:
+    """Load and validate multiple measurements from one workbook pass."""
 
     source = Path(workbook_path)
     try:
@@ -95,11 +89,16 @@ def load_measurement(
             )
         worksheet = workbook[sheet_name]
         schema = discover_schema(worksheet)
-        return parse_measurement_rows(worksheet, schema, measurement)
+        return parse_measurements_rows(
+            worksheet,
+            schema,
+            measurements,
+            test_filters=test_filters,
+        )
 
 
 def discover_schema(worksheet: Any) -> SheetSchema:
-    """Discover fixed fields and pivot groups from header rows 2, 3, and 4."""
+    """Discover dynamic metadata columns and pivot groups from header rows 2-4."""
 
     header_rows = list(
         worksheet.iter_rows(min_row=2, max_row=4, values_only=True)
@@ -113,41 +112,12 @@ def discover_schema(worksheet: Any) -> SheetSchema:
             f"Worksheet '{worksheet.title}' has no usable headers in rows 2 through 4."
         )
 
-    fixed_positions: dict[str, list[int]] = {}
-    known_fixed = {*REQUIRED_FIXED_HEADERS, *OPTIONAL_FIXED_HEADERS}
-    for column in range(1, width + 1):
-        canonical = _canonical_fixed(_cell(column_labels, column))
-        if canonical in known_fixed:
-            fixed_positions.setdefault(canonical, []).append(column)
-
     errors: list[str] = []
-    fixed_columns: dict[str, int] = {}
-    for header in REQUIRED_FIXED_HEADERS:
-        positions = fixed_positions.get(header, [])
-        if not positions:
-            errors.append(f"required row-4 header '{header}' is missing")
-        elif len(positions) > 1:
-            errors.append(
-                f"required row-4 header '{header}' appears more than once at columns "
-                f"{positions}"
-            )
-        else:
-            fixed_columns[header] = positions[0]
-    for header in OPTIONAL_FIXED_HEADERS:
-        positions = fixed_positions.get(header, [])
-        if len(positions) > 1:
-            errors.append(
-                f"optional row-4 header '{header}' appears more than once at columns "
-                f"{positions}"
-            )
-        elif positions:
-            fixed_columns[header] = positions[0]
-
-    fixed_end = max(fixed_columns.values(), default=0)
     pivot_blocks: dict[str, dict[str, int]] = {}
     pivot_order: list[str] = []
+    pivot_stat_columns: set[int] = set()
     active_pivot: str | None = None
-    for column in range(fixed_end + 1, width + 1):
+    for column in range(1, width + 1):
         label = _text(_cell(pivot_labels, column))
         if label:
             active_pivot = label
@@ -169,15 +139,47 @@ def discover_schema(worksheet: Any) -> SheetSchema:
             )
         else:
             pivot_blocks[active_pivot][statistic] = column
+            pivot_stat_columns.add(column)
+
+    metadata_positions: dict[str, list[int]] = {}
+    for column in range(1, width + 1):
+        if column in pivot_stat_columns:
+            continue
+        header = canonical_metadata_header(_cell(column_labels, column))
+        if header:
+            metadata_positions.setdefault(header, []).append(column)
+
+    metadata_columns: dict[str, int] = {}
+    for header, positions in metadata_positions.items():
+        if len(positions) > 1:
+            errors.append(
+                f"row-4 metadata header '{header}' appears more than once at columns "
+                f"{positions}"
+            )
+        else:
+            metadata_columns[header] = positions[0]
+
+    for header in REQUIRED_METADATA_HEADERS:
+        if header not in metadata_columns:
+            errors.append(f"required row-4 metadata header '{header}' is missing")
 
     if not pivot_blocks:
         errors.append("no pivot groups were found from row-2 names and row-3 statistics")
     for pivot_name in pivot_order:
-        missing = set(REQUIRED_PIVOT_STATISTICS) - set(pivot_blocks[pivot_name])
+        missing = [
+            statistic
+            for statistic in REQUIRED_PIVOT_STATISTICS
+            if statistic not in pivot_blocks[pivot_name]
+        ]
+        if not any(
+            statistic in pivot_blocks[pivot_name]
+            for statistic in ALTERNATIVE_PIVOT_STATISTICS
+        ):
+            missing.append("MEAN or NN_25C AVG")
         if missing:
             errors.append(
                 f"pivot '{pivot_name}' is missing required statistic(s): "
-                + ", ".join(sorted(missing))
+                + ", ".join(missing)
             )
     if errors:
         raise WorkbookValidationError(
@@ -192,7 +194,7 @@ def discover_schema(worksheet: Any) -> SheetSchema:
 
     return SheetSchema(
         name=worksheet.title,
-        fixed_columns=fixed_columns,
+        metadata_columns=metadata_columns,
         pivots=tuple(
             PivotSchema(name=name, statistics=pivot_blocks[name])
             for name in pivot_order
@@ -205,29 +207,78 @@ def parse_measurement_rows(
     schema: SheetSchema,
     measurement: str,
 ) -> ParsedMeasurement:
-    """Normalize exact measurement rows and summarize unusable numeric cells."""
+    """Normalize one measurement and summarize unusable numeric cells."""
 
-    requested = measurement.strip().upper()
+    return parse_measurements_rows(worksheet, schema, (measurement,))[0]
+
+
+def parse_measurements_rows(
+    worksheet: Any,
+    schema: SheetSchema,
+    measurements: Sequence[str],
+    *,
+    test_filters: Mapping[str, Mapping[str, Sequence[object]]] | None = None,
+) -> tuple[ParsedMeasurement, ...]:
+    """Normalize multiple measurements in one worksheet row scan."""
+
+    requested_measurements = tuple(measurement.strip().upper() for measurement in measurements)
+    definitions = {
+        measurement: get_measurement_definition(measurement)
+        for measurement in requested_measurements
+    }
     max_column = max(
-        [*schema.fixed_columns.values()]
+        [*schema.metadata_columns.values()]
         + [
             column
             for pivot in schema.pivots
             for column in pivot.statistics.values()
         ]
     )
-    cases: list[ComplianceCase] = []
-    gap_counts = {
-        pivot.name: Counter({field: 0 for field in REQUIRED_PIVOT_STATISTICS})
+    cases_by_measurement: dict[str, list[ComplianceCase]] = {
+        measurement: [] for measurement in requested_measurements
+    }
+    limit_gap_counts = {measurement: 0 for measurement in requested_measurements}
+    required_statistics = {
+        pivot.name: (*REQUIRED_PIVOT_STATISTICS, _comparison_statistic(pivot))
         for pivot in schema.pivots
+    }
+    gap_counts = {
+        measurement: {
+            pivot.name: Counter({field: 0 for field in required_statistics[pivot.name]})
+            for pivot in schema.pivots
+        }
+        for measurement in requested_measurements
     }
     malformed_counts = {
-        pivot.name: Counter({field: 0 for field in REQUIRED_PIVOT_STATISTICS})
-        for pivot in schema.pivots
+        measurement: {
+            pivot.name: Counter({field: 0 for field in required_statistics[pivot.name]})
+            for pivot in schema.pivots
+        }
+        for measurement in requested_measurements
     }
-    rows_with_gap = {pivot.name: 0 for pivot in schema.pivots}
-    duplicate_identity_count = 0
-    seen_identities: set[tuple[tuple[str, Any], ...]] = set()
+    rows_with_gap = {
+        measurement: {pivot.name: 0 for pivot in schema.pivots}
+        for measurement in requested_measurements
+    }
+    filter_rules = {
+        measurement: dict((test_filters or {}).get(measurement, {}))
+        for measurement in requested_measurements
+    }
+    for measurement, rules in filter_rules.items():
+        missing_filter_fields = tuple(
+            field for field in rules if field not in schema.metadata_columns
+        )
+        if missing_filter_fields:
+            available = ", ".join(schema.metadata_columns)
+            raise WorkbookValidationError(
+                f"Test filter field(s) for '{measurement}' are absent from worksheet "
+                f"'{schema.name}': {', '.join(missing_filter_fields)}. Available metadata "
+                f"fields: {available}."
+            )
+    filtered_row_counts = {measurement: 0 for measurement in requested_measurements}
+    measurement_row_counts = {measurement: 0 for measurement in requested_measurements}
+    duplicate_identity_counts = {measurement: 0 for measurement in requested_measurements}
+    seen_identities = {measurement: set() for measurement in requested_measurements}
 
     for worksheet_row, values in enumerate(
         worksheet.iter_rows(
@@ -237,22 +288,29 @@ def parse_measurement_rows(
         ),
         start=schema.data_start_row,
     ):
-        test_name = _cell(values, schema.fixed_columns["TESTNAME"])
-        if _text(test_name).upper() != requested:
+        requested = _text(_cell(values, schema.metadata_columns["TESTNAME"])).upper()
+        if requested not in cases_by_measurement:
             continue
-        fixed_values = {
+        measurement_row_counts[requested] += 1
+        metadata_values = {
             header: _cell(values, column)
-            for header, column in schema.fixed_columns.items()
+            for header, column in schema.metadata_columns.items()
         }
+        if not _matches_test_filter(metadata_values, filter_rules[requested]):
+            filtered_row_counts[requested] += 1
+            continue
+        definition = definitions[requested]
+        if definition.requires_limits and metadata_midpoint(metadata_values) is None:
+            limit_gap_counts[requested] += 1
         identity = tuple(
-            (header, fixed_values.get(header))
-            for header in IDENTIFYING_HEADERS
-            if header in fixed_values
+            (header, metadata_values.get(header))
+            for header in schema.metadata_columns
+            if not is_path_excluded_header(header)
         )
-        if identity in seen_identities:
-            duplicate_identity_count += 1
+        if identity in seen_identities[requested]:
+            duplicate_identity_counts[requested] += 1
         else:
-            seen_identities.add(identity)
+            seen_identities[requested].add(identity)
 
         pivot_values: dict[str, dict[str, float | None]] = {}
         pivot_raw_values: dict[str, dict[str, Any]] = {}
@@ -265,67 +323,114 @@ def parse_measurement_rows(
                 raw_values[statistic] = raw
                 numeric, malformed = _numeric(raw)
                 normalized[statistic] = numeric
-                if statistic in REQUIRED_PIVOT_STATISTICS and numeric is None:
-                    gap_counts[pivot.name][statistic] += 1
+                if statistic in required_statistics[pivot.name] and numeric is None:
+                    gap_counts[requested][pivot.name][statistic] += 1
                     row_has_gap = True
                     if malformed:
-                        malformed_counts[pivot.name][statistic] += 1
+                        malformed_counts[requested][pivot.name][statistic] += 1
             if row_has_gap:
-                rows_with_gap[pivot.name] += 1
+                rows_with_gap[requested][pivot.name] += 1
             pivot_values[pivot.name] = normalized
             pivot_raw_values[pivot.name] = raw_values
 
-        cases.append(
+        cases_by_measurement[requested].append(
             ComplianceCase(
                 worksheet_row=worksheet_row,
                 identity=identity,
-                fixed_values=fixed_values,
+                metadata_values=metadata_values,
                 pivot_values=pivot_values,
                 pivot_raw_values=pivot_raw_values,
             )
         )
 
-    if not cases:
-        raise WorkbookValidationError(
-            f"Worksheet '{schema.name}' contains no rows whose TESTNAME is exactly "
-            f"'{requested}'."
-        )
+    results: list[ParsedMeasurement] = []
+    for requested in requested_measurements:
+        cases = cases_by_measurement[requested]
+        if not cases:
+            if measurement_row_counts[requested] and filter_rules[requested]:
+                raise WorkbookValidationError(
+                    f"Worksheet '{schema.name}' contains no rows for '{requested}' "
+                    "after applying its configured test filters."
+                )
+            raise WorkbookValidationError(
+                f"Worksheet '{schema.name}' contains no rows whose TESTNAME is exactly "
+                f"'{requested}'."
+            )
 
-    warnings: list[str] = []
-    if duplicate_identity_count:
-        warnings.append(
-            f"{duplicate_identity_count} {requested} row(s) repeat an identifying-field "
-            "combination; worksheet row numbers are retained only to make displayed ties "
-            "traceable."
+        warnings: list[str] = []
+        filtered_row_count = filtered_row_counts[requested]
+        if filtered_row_count:
+            warnings.append(
+                f"{requested}: {filtered_row_count} row(s) were excluded by configured "
+                f"test filters ({_format_test_filter(filter_rules[requested])})."
+            )
+        duplicate_identity_count = duplicate_identity_counts[requested]
+        if duplicate_identity_count:
+            warnings.append(
+                f"{duplicate_identity_count} {requested} row(s) repeat an identifying-field "
+                "combination; worksheet row numbers are retained only to make displayed ties "
+                "traceable."
+            )
+        limit_gap_count = limit_gap_counts[requested]
+        if limit_gap_count:
+            warnings.append(
+                f"{requested}: {limit_gap_count} row(s) have missing, malformed, or "
+                "non-finite LL/UL limits and are excluded from GAIN-DNL comparisons."
+            )
+        coverage = tuple(
+            CoverageSummary(
+                pivot=pivot.name,
+                rows_with_gaps=rows_with_gap[requested][pivot.name],
+                gaps_by_field=dict(gap_counts[requested][pivot.name]),
+                malformed_by_field=dict(malformed_counts[requested][pivot.name]),
+            )
+            for pivot in schema.pivots
         )
-    coverage = tuple(
-        CoverageSummary(
-            pivot=pivot.name,
-            rows_with_gaps=rows_with_gap[pivot.name],
-            gaps_by_field=dict(gap_counts[pivot.name]),
-            malformed_by_field=dict(malformed_counts[pivot.name]),
+        for item in coverage:
+            if item.rows_with_gaps:
+                warnings.append(
+                    f"{item.pivot}: {item.rows_with_gaps} row(s) have required-value "
+                    "coverage gaps and are excluded only from affected metrics."
+                )
+            malformed = sum(item.malformed_by_field.values())
+            if malformed:
+                warnings.append(
+                    f"{item.pivot}: {malformed} required value(s) are non-numeric or "
+                    "non-finite and were treated as coverage gaps."
+                )
+
+        results.append(
+            ParsedMeasurement(
+                schema=schema,
+                measurement=requested,
+                cases=tuple(cases),
+                coverage=coverage,
+                warnings=tuple(warnings),
+            )
         )
-        for pivot in schema.pivots
+    return tuple(results)
+
+
+def _matches_test_filter(
+    metadata_values: Mapping[str, object],
+    rules: Mapping[str, Sequence[object]],
+) -> bool:
+    return all(
+        any(_filter_value_matches(metadata_values.get(field), allowed) for allowed in values)
+        for field, values in rules.items()
     )
-    for item in coverage:
-        if item.rows_with_gaps:
-            warnings.append(
-                f"{item.pivot}: {item.rows_with_gaps} row(s) have required-value "
-                "coverage gaps and are excluded only from affected metrics."
-            )
-        malformed = sum(item.malformed_by_field.values())
-        if malformed:
-            warnings.append(
-                f"{item.pivot}: {malformed} required value(s) are non-numeric or "
-                "non-finite and were treated as coverage gaps."
-            )
 
-    return ParsedMeasurement(
-        schema=schema,
-        measurement=requested,
-        cases=tuple(cases),
-        coverage=coverage,
-        warnings=tuple(warnings),
+
+def _filter_value_matches(actual: object, expected: object) -> bool:
+    if isinstance(actual, str) and isinstance(expected, str):
+        return actual.strip().casefold() == expected.strip().casefold()
+    return actual == expected
+
+
+def _format_test_filter(rules: Mapping[str, Sequence[object]]) -> str:
+    return "; ".join(
+        f"{field} in ({', '.join(str(value) for value in values)})"
+        for field, values in rules.items()
     )
 
 
@@ -337,11 +442,19 @@ def _text(value: object) -> str:
     return value.strip() if isinstance(value, str) else ""
 
 
-def _canonical_fixed(value: object) -> str:
-    text = _text(value)
+def canonical_metadata_header(value: object) -> str:
+    """Normalize a workbook metadata header for lookup and configuration."""
+
+    text = " ".join(_text(value).split())
     if text.upper() == "RESULT?":
         return "Result?"
     return text.upper()
+
+
+def is_path_excluded_header(value: object) -> bool:
+    """Return whether a metadata header is excluded from path identity/grouping."""
+
+    return canonical_metadata_header(value).upper() in _PATH_EXCLUDED_CANONICAL
 
 
 def _canonical_statistic(value: object) -> str | None:
@@ -350,11 +463,21 @@ def _canonical_statistic(value: object) -> str | None:
     aliases = {
         "MIN": "MIN",
         "MAX": "MAX",
+        "MEAN": "MEAN",
         "NN_25C AVG": "NN_25C AVG",
         "WCMARGIN": "wcMargin",
         "WCVALUE": "wcValue",
     }
     return aliases.get(upper)
+
+
+def _comparison_statistic(pivot: PivotSchema) -> str:
+    for statistic in ALTERNATIVE_PIVOT_STATISTICS:
+        if statistic in pivot.statistics:
+            return statistic
+    raise WorkbookValidationError(
+        f"Pivot '{pivot.name}' has no MEAN or NN_25C AVG statistic."
+    )
 
 
 def _numeric(value: object) -> tuple[float | None, bool]:

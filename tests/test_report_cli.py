@@ -12,7 +12,7 @@ def test_report_is_self_contained_and_escapes_user_text(
 ):
     workbook = workbook_factory(sample_rows)
     settings = write_settings(
-        tmp_path / "settings.json",
+        tmp_path / "JUI.json",
         workbook,
         background="<script>alert('x')</script>",
     )
@@ -42,9 +42,69 @@ def test_report_is_self_contained_and_escapes_user_text(
     assert "Degraded DUT-1_VAR1 failures" not in rendered
 
 
+def test_report_tables_retain_arbitrary_metadata_fields(
+    tmp_path, workbook_factory, sample_rows
+):
+    rows = [
+        {**row, "TEMP": temperature}
+        for row, temperature in zip(sample_rows[:3], (-50, 25, 110), strict=True)
+    ]
+    workbook = workbook_factory(rows, extra_headers=("TEMP",))
+    settings = write_settings(tmp_path / "JUI.json", workbook)
+
+    rendered = render_html(analyze(settings))
+
+    assert ">TEMP</th>" in rendered
+    assert ">-50</td>" in rendered
+
+
+def test_report_repeats_the_current_summary_for_each_measurement(
+    tmp_path, workbook_factory, sample_rows
+):
+    rows = [
+        {**sample_rows[0], "TESTNAME": "GAIN"},
+        {**sample_rows[1], "TESTNAME": "GCIB"},
+    ]
+    workbook = workbook_factory(rows)
+    settings = write_settings(
+        tmp_path / "JUI.json",
+        workbook,
+        testnames=["GAIN", "GCIB"],
+        acceptable_variation={"GAIN": 0.2, "GCIB": 0.2},
+    )
+
+    rendered = render_html(analyze(settings))
+
+    assert rendered.count("<h1>GAIN compliance summary</h1>") == 1
+    assert rendered.count("<h1>GCIB compliance summary</h1>") == 1
+    assert rendered.count(">Run configuration</h2>") == 2
+    assert rendered.count(">Overall pivot compliance</h2>") == 2
+    assert rendered.count('<article class="measurement-summary">') == 2
+    assert ".measurement-summary + .measurement-summary" in rendered
+
+
+def test_main_pivot_is_first_in_pivot_compliance_table(
+    tmp_path, workbook_factory, sample_rows
+):
+    workbook = workbook_factory(sample_rows[:3])
+    settings = write_settings(
+        tmp_path / "JUI.json",
+        workbook,
+        main_pivot="DUT-2_VAR1",
+    )
+
+    rendered = render_html(analyze(settings))
+    compliance_table = rendered.split(
+        "<caption>Pivot compliance</caption>",
+        1,
+    )[1]
+
+    assert compliance_table.index(">DUT-2_VAR1</td>") < compliance_table.index(">DUT-1_VAR1</td>")
+
+
 def test_cli_runs_end_to_end(tmp_path, workbook_factory, sample_rows, capsys):
     workbook = workbook_factory(sample_rows)
-    settings = write_settings(tmp_path / "settings.json", workbook)
+    settings = write_settings(tmp_path / "JUI.json", workbook)
     output = tmp_path / "report.html"
 
     exit_code = main(["--settings", str(settings), "--output", str(output)])

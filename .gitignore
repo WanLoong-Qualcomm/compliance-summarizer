@@ -1,7 +1,7 @@
 .env
 .quartz
 *.xlsm
-*.xlsx
 __pycache__/
-settings.json
+JUI.json
 *.html
+references/

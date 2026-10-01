@@ -37,21 +37,27 @@ def workbook_factory(tmp_path: Path):
         pivots: tuple[str, ...] = ("DUT-1_VAR1", "DUT-2_VAR1"),
         filename: str = "input.xlsx",
         omit_header: str | None = None,
+        extra_headers: tuple[str, ...] = (),
+        pivot_stats: tuple[str, ...] = PIVOT_STATS,
     ) -> Path:
         workbook = Workbook()
         sheet = workbook.active
         sheet.title = "Combined"
         sheet.cell(1, 1, "COMPLIANCE_DASHBOARD")
-        headers = [header for header in FIXED_HEADERS if header != omit_header]
+        headers = [
+            header
+            for header in (*FIXED_HEADERS, *extra_headers)
+            if header != omit_header
+        ]
         for column, header in enumerate(headers, start=1):
             sheet.cell(4, column, header)
         start = len(headers) + 1
         for pivot_index, pivot in enumerate(pivots):
-            first = start + pivot_index * len(PIVOT_STATS)
-            last = first + len(PIVOT_STATS) - 1
+            first = start + pivot_index * len(pivot_stats)
+            last = first + len(pivot_stats) - 1
             sheet.merge_cells(start_row=2, start_column=first, end_row=2, end_column=last)
             sheet.cell(2, first, pivot)
-            for offset, statistic in enumerate(PIVOT_STATS):
+            for offset, statistic in enumerate(pivot_stats):
                 sheet.cell(3, first + offset, statistic)
                 sheet.cell(4, first + offset, f"Column{first + offset}")
 
@@ -59,9 +65,9 @@ def workbook_factory(tmp_path: Path):
             for column, header in enumerate(headers, start=1):
                 sheet.cell(row_number, column, row_data.get(header))
             for pivot_index, pivot in enumerate(pivots):
-                first = start + pivot_index * len(PIVOT_STATS)
+                first = start + pivot_index * len(pivot_stats)
                 values = row_data.get(pivot, {})
-                for offset, statistic in enumerate(PIVOT_STATS):
+                for offset, statistic in enumerate(pivot_stats):
                     sheet.cell(row_number, first + offset, values.get(statistic))
         path = tmp_path / filename
         workbook.save(path)
@@ -169,13 +175,12 @@ def write_settings(
     payload: dict[str, object] = {
         "excel_file_path": workbook.name,
         "compliance_sheet_name": "Combined",
-        "test": "SIGPATH",
-        "measurements": ["GAIN"],
+        "block": "SIGPATH",
+        "testnames": ["GAIN"],
         "acceptable_variation": {"GAIN": 0.2},
         "background_information": background,
         "main_pivot": main_pivot,
         "group_by": [],
-        "aggregate_port_groups": False,
         "bypass_model": True,
     }
     payload.update(overrides)

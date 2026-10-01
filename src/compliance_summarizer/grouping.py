@@ -12,6 +12,7 @@ from .models import (
     ParsedMeasurement,
 )
 from .statistics import calculate_measurement_statistics
+from .workbook import canonical_metadata_header, is_path_excluded_header
 
 
 _BLANK = object()
@@ -28,22 +29,29 @@ def calculate_grouped_analyses(
     if not group_by:
         return (), ()
 
-    normalized_fields = tuple(field.strip().upper() for field in group_by)
+    normalized_fields = tuple(canonical_metadata_header(field) for field in group_by)
+    excluded = tuple(field for field in normalized_fields if is_path_excluded_header(field))
+    if excluded:
+        raise WorkbookValidationError(
+            "Configured group_by field(s) cannot be used for grouping: "
+            + ", ".join(excluded)
+            + "."
+        )
     missing = tuple(
-        field for field in normalized_fields if field not in parsed.schema.fixed_columns
+        field for field in normalized_fields if field not in parsed.schema.metadata_columns
     )
     if missing:
-        available = ", ".join(parsed.schema.fixed_columns)
+        available = ", ".join(parsed.schema.metadata_columns)
         raise WorkbookValidationError(
             f"Configured group_by field(s) are absent from worksheet "
-            f"'{parsed.schema.name}': {', '.join(missing)}. Available fixed "
+            f"'{parsed.schema.name}': {', '.join(missing)}. Available metadata "
             f"fields: {available}."
         )
 
     groups: dict[tuple[object, ...], list[ComplianceCase]] = defaultdict(list)
     display_keys: dict[tuple[object, ...], tuple[tuple[str, Any], ...]] = {}
     for case in parsed.cases:
-        raw_values = tuple(case.fixed_values.get(field) for field in normalized_fields)
+        raw_values = tuple(case.metadata_values.get(field) for field in normalized_fields)
         group_token = tuple(_group_token(value) for value in raw_values)
         groups[group_token].append(case)
         display_keys[group_token] = tuple(

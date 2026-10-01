@@ -11,12 +11,15 @@ from typing import Iterable, Sequence
 
 from .errors import ReportError
 from .grouping import format_group_key
+from .measurements import get_measurement_definition
 from .models import (
     CALCULATION_ERROR,
     AnalysisResult,
     FailureCaseStatistics,
     GroupedAnalysis,
+    MeasurementAnalysis,
     MeasurementStatistics,
+    PivotMainStatistics,
     Rate,
 )
 
@@ -59,47 +62,19 @@ def write_html_report(
 
 
 def render_html(analysis: AnalysisResult) -> str:
-    settings = analysis.settings
-    parsed = analysis.parsed
-    stats = analysis.statistics
-    main = next(item for item in stats.pivot_statistics if item.pivot == stats.main_pivot)
     body = "".join(
-        (
-            _hero(analysis, main.failure_rate),
-            _section("Run configuration", _configuration_table(analysis)),
-            _section("Coverage and validation", _coverage(analysis)),
-            _section(
-                "Overall pivot compliance",
-                _pivot_compliance_content(analysis.statistics),
-            ),
-            _section(
-                f"Overall {stats.main_pivot} comparisons",
-                _comparison_content(analysis.statistics),
-            ),
-            _section(
-                f"Overall {stats.main_pivot} failures",
-                f'<p class="method">The top 20 failures are ordered by ascending '
-                f'{_escape(stats.main_pivot)} '
-                "<code>wcMargin</code>. Missing comparison operands remain blank.</p>"
-                + _top_failure_table(analysis),
-            ),
-            _section(
-                f"Overall {stats.main_pivot} pass cases",
-                f'<p class="method">The top 5 passing cases are ordered by ascending '
-                f'{_escape(stats.main_pivot)} '
-                "<code>wcMargin</code>. Missing comparison operands remain blank.</p>"
-                + _top_pass_table(analysis),
-            ),
-            _grouped_sections(analysis),
-            _section("Methodology and assumptions", _notes(analysis)),
-        )
+        _measurement_sections(analysis, item)
+        for item in analysis.measurement_analyses
+    )
+    measurement_title = ", ".join(
+        item.measurement for item in analysis.measurement_analyses
     )
     return f"""<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Compliance Summary — {_escape(stats.measurement)}</title>
+<title>Compliance Summary — {_escape(measurement_title)}</title>
 <style>
 :root {{ color-scheme: light; --ink:#172033; --muted:#5d6778; --line:#d9dfeb;
 --panel:#fff; --wash:#f4f7fb; --brand:#3157d5; --bad:#FF0000; --good:#006100; }}
@@ -114,6 +89,8 @@ h2 {{ margin:0 0 14px; font-size:20px; }} .subtitle {{ opacity:.84; margin:0; }}
 background:#ffffff13; }} .card strong {{ display:block; font-size:21px; }}
 section {{ margin-top:18px; padding:22px; border:1px solid var(--line); border-radius:14px;
 background:var(--panel); box-shadow:0 3px 14px #1720330b; }} .method,.muted {{ color:var(--muted); }}
+.measurement-summary + .measurement-summary {{ margin-top:42px; padding-top:28px;
+border-top:2px solid var(--line); }}
 .scroll {{ overflow:auto; }} table {{ width:100%; border:1px solid #7F7F7F; border-collapse:collapse; font-size:13px; }}
 caption {{ text-align:left; font-weight:700; margin-bottom:8px; }} th {{ background:#eef2fb;
 position:sticky; top:0; text-align:left; }} th,td {{ border:1px solid #7F7F7F; padding:8px 9px;
@@ -127,7 +104,7 @@ vertical-align:top; white-space:nowrap; }} tr:nth-child(even) td {{ background:#
 .excel-compliance-table thead th.worksheet-spacer {{ background:var(--panel); border:1px solid #7F7F7F; }}
 .excel-compliance-table thead th.worksheet-header {{ background:var(--panel); }}
 .excel-compliance-table tbody td {{ text-align:center; }}
-.excel-compliance-table tbody td.excel-fixed-value {{ background:#E2F0D9; }}
+.excel-compliance-table tbody td.excel-metadata-value {{ background:#E2F0D9; }}
 .excel-compliance-table tbody td.excel-bound-value {{ background:#D9E2F3; color:#0000FF; }}
 .excel-compliance-table tbody td.excel-pivot-value,
 .excel-compliance-table tbody td.excel-delta {{ background:#D9E2F3; }}
@@ -154,8 +131,57 @@ code {{ background:#edf0f6; padding:1px 4px; border-radius:4px; }} ul {{ margin-
 """
 
 
-def _hero(analysis: AnalysisResult, failure_rate: Rate) -> str:
-    stats = analysis.statistics
+def _measurement_sections(
+    analysis: AnalysisResult,
+    item: MeasurementAnalysis,
+) -> str:
+    stats = item.statistics
+    main = next(
+        pivot for pivot in stats.pivot_statistics if pivot.pivot == stats.main_pivot
+    )
+    return (
+        '<article class="measurement-summary">'
+        + "".join(
+            (
+            _hero(analysis, item, main.failure_rate),
+            _section("Run configuration", _configuration_table(analysis, item)),
+            _section("Coverage and validation", _coverage(item)),
+            _section(
+                "Overall pivot compliance",
+                _pivot_compliance_content(stats),
+            ),
+            _section(
+                f"Overall {stats.main_pivot} comparisons",
+                _comparison_content(stats),
+            ),
+            _section(
+                f"Overall {stats.main_pivot} failures",
+                f'<p class="method">The top 20 failures are ordered by ascending '
+                f'{_escape(stats.main_pivot)} '
+                "<code>wcMargin</code>. Missing comparison operands remain blank.</p>"
+                + _top_failure_table(analysis, item),
+            ),
+            _section(
+                f"Overall {stats.main_pivot} pass cases",
+                f'<p class="method">The top 5 passing cases are ordered by ascending '
+                f'{_escape(stats.main_pivot)} '
+                "<code>wcMargin</code>. Missing comparison operands remain blank.</p>"
+                + _top_pass_table(analysis, item),
+            ),
+            _grouped_sections(item),
+            _section("Methodology and assumptions", _notes(analysis)),
+            )
+        )
+        + "</article>"
+    )
+
+
+def _hero(
+    analysis: AnalysisResult,
+    item: MeasurementAnalysis,
+    failure_rate: Rate,
+) -> str:
+    stats = item.statistics
     main_pivot = _escape(stats.main_pivot)
     failure_label = _format_rate(failure_rate)
     return f"""<header class="hero">
@@ -170,15 +196,22 @@ def _hero(analysis: AnalysisResult, failure_rate: Rate) -> str:
 </div></header>"""
 
 
-def _configuration_table(analysis: AnalysisResult) -> str:
+def _configuration_table(
+    analysis: AnalysisResult,
+    item: MeasurementAnalysis,
+) -> str:
     settings = analysis.settings
+    stats = item.statistics
     rows = (
         ("Workbook", settings.excel_file_path),
         ("Sheet", settings.compliance_sheet_name),
-        ("Test", settings.test),
-        ("Measurement", ", ".join(settings.measurements)),
+        ("Block", settings.block),
+        ("Measurement", stats.measurement),
         ("Baseline", settings.main_pivot),
-        ("GAIN acceptable variation", settings.acceptable_variation["GAIN"]),
+        (
+            f"{stats.measurement} acceptable variation",
+            settings.acceptable_variation[stats.measurement],
+        ),
         ("Group by", ", ".join(settings.group_by) or "(none)"),
         ("Model bypass", settings.bypass_model),
         ("Background information", settings.background_information or ""),
@@ -191,14 +224,14 @@ def _configuration_table(analysis: AnalysisResult) -> str:
     )
 
 
-def _coverage(analysis: AnalysisResult) -> str:
+def _coverage(item: MeasurementAnalysis) -> str:
     rows = []
-    for item in analysis.parsed.coverage:
+    for coverage in item.parsed.coverage:
         rows.append(
             (
-                item.pivot,
-                item.rows_with_gaps,
-                sum(item.malformed_by_field.values()),
+                coverage.pivot,
+                coverage.rows_with_gaps,
+                sum(coverage.malformed_by_field.values()),
             )
         )
     content = _table(
@@ -211,7 +244,7 @@ def _coverage(analysis: AnalysisResult) -> str:
         "Coverage gaps",
         table_class="excel-summary-table",
     )
-    warnings = (*analysis.parsed.warnings, *analysis.group_warnings)
+    warnings = (*item.parsed.warnings, *item.group_warnings)
     if warnings:
         content += "<h3>Warnings</h3><ul>" + "".join(
             f"<li>{_escape(warning)}</li>" for warning in warnings
@@ -226,8 +259,9 @@ def _pivot_table(
     *,
     highlight_pivot: str | None = None,
 ) -> str:
+    pivot_statistics = _main_pivot_first(stats.pivot_statistics, stats.main_pivot)
     rows = []
-    for item in stats.pivot_statistics:
+    for item in pivot_statistics:
         rows.append(
             (
                 item.pivot,
@@ -239,7 +273,7 @@ def _pivot_table(
             )
         )
     cell_classes = []
-    for item, row in zip(stats.pivot_statistics, rows, strict=True):
+    for item, row in zip(pivot_statistics, rows, strict=True):
         classes = [
             "main-pivot-row" if item.pivot == highlight_pivot else ""
             for _ in row
@@ -272,6 +306,21 @@ def _pivot_table(
         "Pivot compliance",
         cell_classes=tuple(cell_classes),
         table_class="excel-summary-table",
+    )
+
+
+def _main_pivot_first(
+    pivot_statistics: Sequence[PivotMainStatistics],
+    main_pivot: str,
+) -> tuple[PivotMainStatistics, ...]:
+    return tuple(
+        item
+        for item in pivot_statistics
+        if item.pivot == main_pivot
+    ) + tuple(
+        item
+        for item in pivot_statistics
+        if item.pivot != main_pivot
     )
 
 
@@ -330,18 +379,34 @@ def _pivot_compliance_content(stats: MeasurementStatistics) -> str:
 
 
 def _comparison_content(stats: MeasurementStatistics) -> str:
+    definition = get_measurement_definition(stats.measurement)
+    if definition.requires_limits:
+        formula = (
+            "comparison-pivot deviation − main-pivot deviation"
+        )
+        explanation = (
+            "Each deviation is the absolute distance from the row's LL/UL midpoint; "
+            "smaller deviation is better."
+        )
+    elif definition.higher_is_better:
+        formula = "main-pivot value − comparison-pivot value"
+        explanation = "Higher values are better."
+    else:
+        formula = "comparison-pivot value − main-pivot value"
+        explanation = "Lower values are better."
     return (
-        f'<p class="method"><code>delta = {_escape(stats.main_pivot)} NN_25C AVG '
-        "− comparison NN_25C AVG</code>. For GAIN, negative is degradation and positive is "
+        f'<p class="method"><code>delta = {_escape(formula)}</code>. '
+        "<code>MEAN</code> is used when available; otherwise <code>NN_25C AVG</code> "
+        f"is used. {_escape(explanation)} Negative is degradation and positive is "
         "improvement. Values within the inclusive tolerance are unchanged.</p>"
         + _comparison_table(stats)
     )
 
 
-def _grouped_sections(analysis: AnalysisResult) -> str:
+def _grouped_sections(item: MeasurementAnalysis) -> str:
     return "".join(
         _grouped_section(grouped)
-        for grouped in analysis.grouped_analyses
+        for grouped in item.grouped_analyses
     )
 
 
@@ -358,34 +423,43 @@ def _grouped_section(grouped: GroupedAnalysis) -> str:
     return _section(f"Group: {group_label}", content)
 
 
-def _top_failure_table(analysis: AnalysisResult) -> str:
+def _top_failure_table(
+    analysis: AnalysisResult,
+    item: MeasurementAnalysis,
+) -> str:
     return _ranked_case_table(
         analysis,
-        analysis.statistics.top_failure_cases,
+        item,
+        item.statistics.top_failure_cases,
         caption="Failure cases",
-        empty=f"{analysis.statistics.main_pivot} has no negative wcMargin values.",
+        empty=f"{item.statistics.main_pivot} has no negative wcMargin values.",
     )
 
 
-def _top_pass_table(analysis: AnalysisResult) -> str:
+def _top_pass_table(
+    analysis: AnalysisResult,
+    item: MeasurementAnalysis,
+) -> str:
     return _ranked_case_table(
         analysis,
-        analysis.statistics.top_pass_cases,
+        item,
+        item.statistics.top_pass_cases,
         caption="Pass cases",
-        empty=f"{analysis.statistics.main_pivot} has no non-negative wcMargin values.",
+        empty=f"{item.statistics.main_pivot} has no non-negative wcMargin values.",
     )
 
 
 def _ranked_case_table(
     analysis: AnalysisResult,
+    item: MeasurementAnalysis,
     cases: Sequence[FailureCaseStatistics],
     *,
     caption: str,
     empty: str,
 ) -> str:
-    schema = analysis.parsed.schema
-    fixed_headers = tuple(
-        header for header, _ in sorted(schema.fixed_columns.items(), key=lambda item: item[1])
+    schema = item.parsed.schema
+    metadata_headers = tuple(
+        header for header, _ in sorted(schema.metadata_columns.items(), key=lambda item: item[1])
     )
     pivot_groups = tuple(
         (
@@ -400,17 +474,17 @@ def _ranked_case_table(
         for pivot in schema.pivots
     )
     comparison_headers = tuple(
-        f"Δ({analysis.statistics.main_pivot}, {comparison.comparison_pivot})"
-        for comparison in analysis.statistics.comparisons
+        f"Δ({item.statistics.main_pivot}, {comparison.comparison_pivot})"
+        for comparison in item.statistics.comparisons
     )
     rows: list[tuple[object, ...]] = []
     cell_classes: list[tuple[str, ...]] = []
-    for item in cases:
-        case = item.case
+    for case_statistics in cases:
+        case = case_statistics.case
         row: list[object] = [case.worksheet_row]
         classes: list[str] = ["excel-worksheet-row"]
-        for header in fixed_headers:
-            value = case.fixed_values.get(header)
+        for header in metadata_headers:
+            value = case.metadata_values.get(header)
             row.append(value)
             if header == "Result?":
                 status = str(value).strip().upper()
@@ -420,7 +494,7 @@ def _ranked_case_table(
             elif header in {"LL", "UL"}:
                 classes.append("excel-bound-value")
             else:
-                classes.append("excel-fixed-value")
+                classes.append("excel-metadata-value")
         for pivot in schema.pivots:
             margin = case.pivot_values[pivot.name].get("wcMargin")
             pivot_class = "excel-pivot-value"
@@ -431,8 +505,8 @@ def _ranked_case_table(
             ):
                 row.append(case.pivot_raw_values[pivot.name].get(statistic))
                 classes.append(pivot_class)
-        for comparison in analysis.statistics.comparisons:
-            delta = item.deltas[comparison.comparison_pivot]
+        for comparison in item.statistics.comparisons:
+            delta = case_statistics.deltas[comparison.comparison_pivot]
             row.append(delta)
             semantic_class = _comparison_class(delta)
             classes.append(
@@ -442,7 +516,7 @@ def _ranked_case_table(
         rows.append(tuple(row))
         cell_classes.append(tuple(classes))
     return _grouped_table(
-        ("Worksheet row",) + fixed_headers,
+        ("Worksheet row",) + metadata_headers,
         pivot_groups + (("Comparison Deltas", comparison_headers),),
         rows,
         caption,
@@ -511,7 +585,7 @@ def _table(
 
 
 def _grouped_table(
-    fixed_headers: Sequence[object],
+    leading_headers: Sequence[object],
     groups: Sequence[tuple[object, Sequence[object]]],
     rows: Iterable[Sequence[object]],
     caption: str,
@@ -527,7 +601,7 @@ def _grouped_table(
             if index == 0
             else '<th class="header-spacer" aria-hidden="true"></th>'
         )
-        for index, _ in enumerate(fixed_headers)
+        for index, _ in enumerate(leading_headers)
     )
     group_head = "".join(
         f'<th class="pivot-group" scope="colgroup" colspan="{len(headers)}">'
@@ -541,13 +615,13 @@ def _grouped_table(
             if header == "Worksheet row"
             else f'<th scope="col">{_escape(header)}</th>'
         )
-        for header in fixed_headers
+        for header in leading_headers
     ) + "".join(
         f'<th scope="col">{_escape(header)}</th>'
         for _, headers in groups
         for header in headers
     )
-    total_columns = len(fixed_headers) + sum(len(headers) for _, headers in groups)
+    total_columns = len(leading_headers) + sum(len(headers) for _, headers in groups)
     if materialized:
         body_rows = []
         for index, row in enumerate(materialized):
