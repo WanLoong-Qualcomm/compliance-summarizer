@@ -5,3 +5,4 @@ __pycache__/
 JUI.json
 *.html
 references/
+outputs/

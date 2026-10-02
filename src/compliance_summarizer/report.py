@@ -12,9 +12,9 @@ from typing import Iterable, Sequence
 from .errors import ReportError
 from .grouping import format_group_key
 from .measurements import (
-    MAIN_MINUS_OTHER,
+    ANCHOR_MINUS_OTHER,
     MIDPOINT_DEVIATION,
-    OTHER_MINUS_MAIN,
+    OTHER_MINUS_ANCHOR,
     get_measurement_definition,
 )
 from .workbook import (
@@ -126,14 +126,11 @@ border-right:1px solid #7F7F7F; }}
 .excel-compliance-table thead th.worksheet-header {{ background:var(--panel); }}
 .excel-compliance-table tbody td {{ text-align:center; }}
 .excel-compliance-table tbody td.excel-metadata-value {{ background:#E2F0D9; }}
-.excel-compliance-table tbody td.excel-bound-value {{ background:#D9E2F3; color:#0000FF; }}
-.excel-compliance-table tbody td.excel-pivot-value,
-.excel-compliance-table tbody td.excel-delta {{ background:#D9E2F3; }}
-.excel-compliance-table tbody td.excel-fail-type {{ background:#D9E2F3; }}
-.excel-compliance-table tbody tr:nth-child(even) td.excel-bound-value,
-.excel-compliance-table tbody tr:nth-child(even) td.excel-pivot-value,
-.excel-compliance-table tbody tr:nth-child(even) td.excel-delta,
-.excel-compliance-table tbody tr:nth-child(even) td.excel-fail-type {{ background:#FFFFFF; }}
+.excel-compliance-table tbody td.excel-bound-value {{ color:#0000FF; }}
+.excel-compliance-table tbody td.excel-column-shade-1 {{ background:#D9E2F3; }}
+.excel-compliance-table tbody td.excel-column-shade-2 {{ background:#E6DDF3; }}
+.excel-compliance-table tbody tr:nth-child(even) td.excel-column-shade-1,
+.excel-compliance-table tbody tr:nth-child(even) td.excel-column-shade-2 {{ background:#FFFFFF; }}
 .excel-compliance-table tbody td.excel-pivot-failure {{ color:#FF0000; }}
 .excel-compliance-table tbody td.excel-result-pass {{ background:#C6EFCE; color:#006100; }}
 .excel-compliance-table tbody td.excel-result-fail {{ background:#FFC7CE; color:#9C0006; }}
@@ -144,7 +141,7 @@ border-right:1px solid #7F7F7F; }}
 .compliance-failure {{ color:var(--bad); }}
 .compliance-clear {{ color:var(--good); }}
 .compliance-worst-failure {{ color:var(--bad); }}
-.main-pivot-row {{ font-weight:700; }}
+.anchor-pivot-row {{ font-weight:700; }}
 .group-divider {{ border:0; border-top:1px solid var(--line); margin:24px 0; }}
 h3 {{ margin:0 0 10px; font-size:16px; }}
 code {{ background:#edf0f6; padding:1px 4px; border-radius:4px; }} ul {{ margin-bottom:0; }}
@@ -161,7 +158,7 @@ def _measurement_sections(
 ) -> str:
     stats = item.statistics
     main = next(
-        pivot for pivot in stats.pivot_statistics if pivot.pivot == stats.main_pivot
+        pivot for pivot in stats.pivot_statistics if pivot.pivot == stats.anchor_pivot
     )
     return (
         '<article class="measurement-summary">'
@@ -174,20 +171,20 @@ def _measurement_sections(
                 _pivot_compliance_content(stats),
             ),
             _section(
-                f"Overall {stats.main_pivot} comparisons",
+                f"Overall {stats.anchor_pivot} comparisons",
                 _comparison_content(stats),
             ),
             _section(
-                f"Overall {stats.main_pivot} failures",
+                f"Overall {stats.anchor_pivot} failures",
                 f'<p class="method">The top 20 failures are ordered by ascending '
-                f'{_escape(stats.main_pivot)} '
+                f'{_escape(stats.anchor_pivot)} '
                 "<code>wcMargin</code>. Missing comparison operands remain blank.</p>"
                 + _top_failure_table(analysis, item),
             ),
             _section(
-                f"Overall {stats.main_pivot} marginal passes",
+                f"Overall {stats.anchor_pivot} marginal passes",
                 f'<p class="method">The top 5 marginal passes are ordered by ascending '
-                f'{_escape(stats.main_pivot)} '
+                f'{_escape(stats.anchor_pivot)} '
                 "<code>wcMargin</code>. Missing comparison operands remain blank.</p>"
                 + _top_pass_table(analysis, item),
             ),
@@ -204,17 +201,17 @@ def _hero(
     failure_rate: Rate,
 ) -> str:
     stats = item.statistics
-    main_pivot = _escape(stats.main_pivot)
+    anchor_pivot = _escape(stats.anchor_pivot)
     failure_label = _format_rate(failure_rate)
     return f"""<header class="hero">
 <h1>{_escape(stats.measurement)} compliance summary</h1>
 <p class="subtitle">{_escape(analysis.settings.excel_file_path.name)} ·
 {_escape(analysis.settings.compliance_sheet_name)} · generated {_escape(analysis.generated_at)}</p>
 <div class="cards">
-<div class="card"><span>{main_pivot}</span><strong>Baseline</strong></div>
+<div class="card"><span>Anchor</span><strong>{anchor_pivot}</strong></div>
 <div class="card"><span>Measurement rows</span><strong>{stats.case_count}</strong></div>
-<div class="card"><span>{main_pivot} failures</span><strong>{failure_rate.numerator}</strong></div>
-<div class="card"><span>{main_pivot} failure rate</span><strong>{_render_cell(failure_label)}</strong></div>
+<div class="card"><span>{anchor_pivot} failures</span><strong>{failure_rate.numerator}</strong></div>
+<div class="card"><span>{anchor_pivot} failure rate</span><strong>{_render_cell(failure_label)}</strong></div>
 </div></header>"""
 
 
@@ -225,7 +222,7 @@ def _configuration_table(analysis: AnalysisResult) -> str:
         ("Sheet", settings.compliance_sheet_name),
         ("Block", settings.block),
         ("Testnames", ", ".join(settings.testnames)),
-        ("Baseline", settings.main_pivot),
+        ("Anchor pivot", settings.anchor_pivot),
         ("Add fail type", settings.add_fail_type),
         (
             "Acceptable variation",
@@ -257,11 +254,11 @@ def _coverage(item: MeasurementAnalysis) -> str:
     coverage_items = tuple(
         coverage
         for coverage in item.parsed.coverage
-        if coverage.pivot == item.statistics.main_pivot
+        if coverage.pivot == item.statistics.anchor_pivot
     ) + tuple(
         coverage
         for coverage in item.parsed.coverage
-        if coverage.pivot != item.statistics.main_pivot
+        if coverage.pivot != item.statistics.anchor_pivot
     )
     for coverage in coverage_items:
         rows.append(
@@ -296,7 +293,7 @@ def _pivot_table(
     *,
     highlight_pivot: str | None = None,
 ) -> str:
-    pivot_statistics = _main_pivot_first(stats.pivot_statistics, stats.main_pivot)
+    pivot_statistics = _anchor_pivot_first(stats.pivot_statistics, stats.anchor_pivot)
     rows = []
     for item in pivot_statistics:
         rows.append(
@@ -312,7 +309,7 @@ def _pivot_table(
     cell_classes = []
     for item, row in zip(pivot_statistics, rows, strict=True):
         classes = [
-            "main-pivot-row" if item.pivot == highlight_pivot else ""
+            "anchor-pivot-row" if item.pivot == highlight_pivot else ""
             for _ in row
         ]
         classes[2] = _append_class(
@@ -351,18 +348,18 @@ def _pivot_table(
     )
 
 
-def _main_pivot_first(
+def _anchor_pivot_first(
     pivot_statistics: Sequence[PivotMainStatistics],
-    main_pivot: str,
+    anchor_pivot: str,
 ) -> tuple[PivotMainStatistics, ...]:
     return tuple(
         item
         for item in pivot_statistics
-        if item.pivot == main_pivot
+        if item.pivot == anchor_pivot
     ) + tuple(
         item
         for item in pivot_statistics
-        if item.pivot != main_pivot
+        if item.pivot != anchor_pivot
     )
 
 
@@ -416,7 +413,7 @@ def _pivot_compliance_content(stats: MeasurementStatistics) -> str:
     return (
         '<p class="method">A negative <code>wcMargin</code> is a failure. '
         "Blank or invalid values are excluded from each pivot's failure-rate calculation.</p>"
-        + _pivot_table(stats, highlight_pivot=stats.main_pivot)
+        + _pivot_table(stats, highlight_pivot=stats.anchor_pivot)
     )
 
 
@@ -428,7 +425,7 @@ def _comparison_content(stats: MeasurementStatistics) -> str:
             "Each deviation is the absolute distance from the row's LL/UL midpoint; "
             "smaller deviation is better."
         )
-    elif definition.delta_fn == MAIN_MINUS_OTHER:
+    elif definition.delta_fn == ANCHOR_MINUS_OTHER:
         explanation = "Higher values are better."
     else:
         explanation = "Lower values are better."
@@ -462,15 +459,15 @@ def _grouped_section(
         "<h3>Pivot compliance</h3>"
         + _pivot_compliance_content(stats)
         + '<hr class="group-divider">'
-        + f"<h3>{_escape(stats.main_pivot)} comparisons</h3>"
+        + f"<h3>{_escape(stats.anchor_pivot)} comparisons</h3>"
         + _comparison_content(stats)
     )
     if grouped.include_failures:
         content += (
             '<hr class="group-divider">'
-            + f"<h3>{_escape(stats.main_pivot)} failures</h3>"
+            + f"<h3>{_escape(stats.anchor_pivot)} failures</h3>"
             + '<p class="method">The top 20 failures are ordered by ascending '
-            + f'{_escape(stats.main_pivot)} '
+            + f'{_escape(stats.anchor_pivot)} '
             + "<code>wcMargin</code>. Missing comparison operands remain blank.</p>"
             + _ranked_case_table(
                 analysis,
@@ -478,15 +475,15 @@ def _grouped_section(
                 stats,
                 stats.top_failure_cases,
                 caption="Failure cases",
-                empty=f"{stats.main_pivot} has no negative wcMargin values.",
+                empty=f"{stats.anchor_pivot} has no negative wcMargin values.",
             )
         )
     if grouped.include_marginal_passes:
         content += (
             '<hr class="group-divider">'
-            + f"<h3>{_escape(stats.main_pivot)} marginal passes</h3>"
+            + f"<h3>{_escape(stats.anchor_pivot)} marginal passes</h3>"
             + '<p class="method">The top 5 marginal passes are ordered by ascending '
-            + f'{_escape(stats.main_pivot)} '
+            + f'{_escape(stats.anchor_pivot)} '
             + "<code>wcMargin</code>. Missing comparison operands remain blank.</p>"
             + _ranked_case_table(
                 analysis,
@@ -494,7 +491,7 @@ def _grouped_section(
                 stats,
                 stats.top_pass_cases,
                 caption="Marginal pass cases",
-                empty=f"{stats.main_pivot} has no non-negative wcMargin values.",
+                empty=f"{stats.anchor_pivot} has no non-negative wcMargin values.",
             )
         )
     return _section(f"Group: {group_label}", content)
@@ -510,7 +507,7 @@ def _top_failure_table(
         item.statistics,
         item.statistics.top_failure_cases,
         caption="Failure cases",
-        empty=f"{item.statistics.main_pivot} has no negative wcMargin values.",
+        empty=f"{item.statistics.anchor_pivot} has no negative wcMargin values.",
     )
 
 
@@ -524,7 +521,7 @@ def _top_pass_table(
         item.statistics,
         item.statistics.top_pass_cases,
         caption="Marginal pass cases",
-        empty=f"{item.statistics.main_pivot} has no non-negative wcMargin values.",
+        empty=f"{item.statistics.anchor_pivot} has no non-negative wcMargin values.",
     )
 
 
@@ -537,8 +534,23 @@ def _ranked_case_table(
     caption: str,
     empty: str,
 ) -> str:
-    metadata_headers = tuple(
+    all_metadata_headers = tuple(
         header for header, _ in sorted(schema.metadata_columns.items(), key=lambda item: item[1])
+    )
+    last_pivot_column = max(
+        column
+        for pivot in schema.pivots
+        for column in pivot.statistics.values()
+    )
+    metadata_headers = tuple(
+        header
+        for header in all_metadata_headers
+        if schema.metadata_columns[header] <= last_pivot_column
+    )
+    user_defined_headers = tuple(
+        header
+        for header in all_metadata_headers
+        if schema.metadata_columns[header] > last_pivot_column
     )
     pivot_groups = tuple(
         (
@@ -561,6 +573,10 @@ def _ranked_case_table(
         _comparison_header(stats, comparison.comparison_pivot)
         for comparison in stats.comparisons
     )
+    groups = pivot_groups
+    if user_defined_headers:
+        groups += (("User defined", user_defined_headers),)
+    groups += (("Comparison Deltas", comparison_headers),)
     rows: list[tuple[object, ...]] = []
     cell_classes: list[tuple[str, ...]] = []
     for case_statistics in cases:
@@ -576,17 +592,18 @@ def _ranked_case_table(
                     "excel-result-pass" if status == "PASS" else "excel-result-fail"
                 )
             elif header in {"LL", "UL"}:
-                classes.append("excel-bound-value")
+                classes.append("excel-bound-value excel-column-shade-1")
             else:
                 classes.append("excel-metadata-value")
-        for pivot in schema.pivots:
+        for pivot_index, pivot in enumerate(schema.pivots):
             margin = case.pivot_values[pivot.name].get("wcMargin")
             fail_type = case.pivot_fail_types.get(pivot.name)
+            pivot_shade = _column_shade_class(pivot_index)
             for statistic, _ in sorted(
                 pivot.statistics.items(), key=lambda field: field[1]
             ):
                 row.append(case.pivot_raw_values[pivot.name].get(statistic))
-                statistic_class = "excel-pivot-value"
+                statistic_class = f"excel-pivot-value {pivot_shade}"
                 if statistic == "wcMargin" and margin is not None and margin < 0:
                     statistic_class += " excel-pivot-failure"
                 elif statistic in SPECIFICATION_STATISTICS and value_outside_limits(
@@ -597,25 +614,33 @@ def _ranked_case_table(
                 classes.append(statistic_class)
             if analysis.settings.add_fail_type:
                 row.append(fail_type)
-                fail_type_class = "excel-fail-type"
+                fail_type_class = f"excel-fail-type {pivot_shade}"
                 if fail_type is not None:
                     fail_type_class += " excel-pivot-failure"
                 if fail_type == FAIL_TYPE_UNDEFINED:
                     fail_type_class += " fail-type-undef"
                 classes.append(fail_type_class)
+        for header in user_defined_headers:
+            row.append(case.metadata_values.get(header))
+            classes.append(
+                f"excel-pivot-value {_column_shade_class(len(schema.pivots))}"
+            )
         for comparison in stats.comparisons:
             delta = case_statistics.deltas[comparison.comparison_pivot]
             row.append(delta)
             semantic_class = _comparison_class(delta)
             classes.append(
-                "excel-delta"
+                "excel-delta "
+                + _column_shade_class(
+                    len(schema.pivots) + bool(user_defined_headers)
+                )
                 + (f" {semantic_class}" if semantic_class else "")
             )
         rows.append(tuple(row))
         cell_classes.append(tuple(classes))
     return _grouped_table(
         ("Worksheet row",) + metadata_headers,
-        pivot_groups + (("Comparison Deltas", comparison_headers),),
+        groups,
         rows,
         caption,
         empty=empty,
@@ -758,13 +783,18 @@ def _grouped_table(
 
 def _comparison_header(stats: MeasurementStatistics, comparison_pivot: str) -> str:
     definition = get_measurement_definition(stats.measurement)
-    if definition.delta_fn == MAIN_MINUS_OTHER:
-        return f"{stats.main_pivot} - {comparison_pivot}"
-    if definition.delta_fn == OTHER_MINUS_MAIN:
-        return f"{comparison_pivot} - {stats.main_pivot}"
+    if definition.delta_fn == ANCHOR_MINUS_OTHER:
+        return f"{stats.anchor_pivot} - {comparison_pivot}"
+    if definition.delta_fn == OTHER_MINUS_ANCHOR:
+        return f"{comparison_pivot} - {stats.anchor_pivot}"
     if definition.delta_fn == MIDPOINT_DEVIATION:
-        return f"{comparison_pivot} deviation - {stats.main_pivot} deviation"
+        return f"{comparison_pivot} deviation - {stats.anchor_pivot} deviation"
     raise ValueError(f"Unsupported measurement delta function '{definition.delta_fn}'.")
+
+
+def _column_shade_class(group_index: int) -> str:
+    shade = 2 if group_index % 2 == 0 else 1
+    return f"excel-column-shade-{shade}"
 
 
 def _comparison_class(value: object) -> str:

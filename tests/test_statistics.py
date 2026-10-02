@@ -22,7 +22,7 @@ def test_compliance_uses_margin_and_comparison_uses_paired_averages(
     assert dict(main.worst_failure_path)["CHANNEL"] == 1
     comparison = result.comparisons[0]
     assert comparison.paired_count == 1
-    assert comparison.main_only_count == 1
+    assert comparison.anchor_only_count == 1
     assert comparison.improvement_rate.numerator == 1
     assert comparison.degradation_rate.numerator == 0
     assert comparison.maximum_improvement == 0.5
@@ -278,10 +278,10 @@ def test_top_five_passes_are_ordered_by_ascending_margin(
         1,
         6,
     ]
-    assert all(item.main_wc_margin >= 0 for item in result.top_pass_cases)
+    assert all(item.anchor_wc_margin >= 0 for item in result.top_pass_cases)
 
 
-def test_main_pivot_without_valid_margin_is_irrecoverable(
+def test_anchor_pivot_without_valid_margin_is_irrecoverable(
     workbook_factory, sample_rows
 ):
     rows = sample_rows[:1]

@@ -19,7 +19,7 @@ The application must:
    `Result?` field;
 2. expose coverage gaps and validation warnings instead of turning missing
    data into failures;
-3. compare every selected pivot with the configured main pivot using the
+3. compare every selected pivot with the configured anchor pivot using the
    measurement-specific direction rules; and
 4. produce useful HTML output without external assets or model access.
 
@@ -28,7 +28,7 @@ The application must:
 - **Measurement:** A supported SIGPATH value in `TESTNAME`, such as `GAIN` or
   `IP3ACS`.
 - **Pivot:** A DUT/variant result group named in row 2, such as `GF-QMOM`.
-- **Main pivot:** The configured baseline pivot used for all comparisons.
+- **Anchor pivot:** The configured reference pivot used for all comparisons.
 - **Comparison pivot:** Every other discovered pivot; comparisons are not
   restricted by DUT or variant naming.
 - **Case:** One normalized worksheet data row for one selected measurement.
@@ -57,7 +57,7 @@ The implementation is staged across the following modules:
    raw pivot values separately from finite numeric values and collecting
    coverage, filtering, limit, and duplicate-identity warnings.
 5. `statistics.py` calculates independent per-pivot compliance statistics,
-   ranked cases, and main-pivot comparisons.
+   ranked cases, and anchor-pivot comparisons.
 6. `grouping.py` optionally partitions the same normalized cases by unique
    combinations of configured metadata fields and reuses the statistics
    calculator for each valid group.
@@ -106,7 +106,7 @@ application does not save or modify the workbook and does not execute macros.
 - `block`: currently required to be `SIGPATH`;
 - `testnames`: one or more unique supported measurements;
 - `background_information`: optional display text;
-- `main_pivot`: non-empty exact pivot name, validated against the workbook;
+- `anchor_pivot`: non-empty exact pivot name, validated against the workbook;
 - `add_fail_type`: optional boolean that adds derived per-pivot `FAIL_type`
   fields, defaulting to `false`;
 - `group_by`: zero or more unique discovered metadata fields or named custom
@@ -181,8 +181,8 @@ The runtime definitions loaded from `configs/test_definition.json` define the
 compliance margin statistic, comparison statistic preference, signed delta
 function, and acceptable variation for each measurement.
 
-`delta_fn` is one of the exact string constants `"main - other"`,
-`"other - main"`, or `"midpoint deviation"`. The latter uses the row's LL/UL
+`delta_fn` is one of the exact string constants `"anchor - other"`,
+`"other - anchor"`, or `"midpoint deviation"`. The latter uses the row's LL/UL
 midpoint. The application dispatches these constants directly; it does not
 parse or execute arbitrary expressions. Tolerances are defined in the same
 measurement-definition file rather than in `JUI.json`.
@@ -198,14 +198,14 @@ For every discovered pivot, the calculator produces:
 - the complete available case identity for that pivot's worst failure, when
   the lowest margin is negative.
 
-The configured main pivot must have at least one valid `wcMargin`; otherwise
+The configured anchor pivot must have at least one valid `wcMargin`; otherwise
 analysis stops because a compliance conclusion cannot be generated. Other
 pivots may have no valid margins and are represented with unavailable values.
 
 The overall analysis also produces:
 
-- up to 20 main-pivot failures, ordered by ascending `wcMargin`;
-- up to 5 main-pivot marginal passes, ordered by ascending non-negative
+- up to 20 anchor-pivot failures, ordered by ascending `wcMargin`;
+- up to 5 anchor-pivot marginal passes, ordered by ascending non-negative
   `wcMargin`; and
 - signed comparison deltas for every ranked case against every comparison
   pivot.
@@ -215,15 +215,15 @@ analyses intentionally omit the ranked case tables.
 
 ### 6.2 Comparison statistics
 
-Comparisons are anchored on the configured main pivot and include every other
+Comparisons are anchored on the configured anchor pivot and include every other
 pivot. The report-oriented delta is signed so degradation is negative and
 improvement is positive:
 
 | Measurements | Better direction | Report-oriented delta |
 | --- | --- | --- |
-| `GAIN`, `IP2ACS`, `IP2IB`, `IP3ACS`, `IP3IB`, `IP3TB` | Higher | main value − comparison value |
-| `GCIB`, `GCTX`, `S11-LOW`, `S11-MID`, `S11-HIGH`, `SSNFWSPURREMOVAL`, `SSNF-FIRSTRBWSPURREMOVAL`, `SSNF-LASTRBWSPURREMOVAL` | Lower | comparison value − main value |
-| `GAIN-DNL` | Smaller midpoint deviation | comparison deviation − main deviation |
+| `GAIN`, `IP2ACS`, `IP2IB`, `IP3ACS`, `IP3IB`, `IP3TB` | Higher | anchor value − comparison value |
+| `GCIB`, `GCTX`, `S11-LOW`, `S11-MID`, `S11-HIGH`, `SSNFWSPURREMOVAL`, `SSNF-FIRSTRBWSPURREMOVAL`, `SSNF-LASTRBWSPURREMOVAL` | Lower | comparison value − anchor value |
+| `GAIN-DNL` | Smaller midpoint deviation | comparison deviation − anchor deviation |
 
 For `GAIN-DNL`, each comparison value is transformed to the absolute distance
 from the row's `(LL + UL) / 2` midpoint. Rows with missing or invalid limits
@@ -235,7 +235,7 @@ For every comparison pivot, the structured result contains:
 - maximum degradation and maximum improvement;
 - average degradation and average improvement;
 - valid paired-row count; and
-- main-only count, where the main comparison value is valid but the other
+- anchor-only count, where the anchor comparison value is valid but the other
   comparison value is not.
 
 Only valid pairs enter comparison metrics. An absolute signed delta less than
@@ -255,6 +255,8 @@ remain red. Each of `MIN`, `MAX`, `NN_25C AVG`, and `MEAN` is independently
 highlighted when outside the row's valid limits. `wcValue` retains its normal
 styling. Ranked tables place pivot group names, pivot field names, and
 worksheet/test metadata headers on separate lines to mirror the workbook.
+LL/UL, pivot, user-defined, and delta cells retain row-wise blue/white
+alternation, with the blue shade alternating by column group.
 
 ## 7. Coverage and validation behavior
 
@@ -265,9 +267,9 @@ ranked source tables.
 
 Coverage handling is metric-specific:
 
-- a missing main-pivot `wcMargin` is excluded from that pivot's compliance
+- a missing anchor-pivot `wcMargin` is excluded from that pivot's compliance
   denominator;
-- a missing comparison-pivot value does not remove the main case from ranked
+- a missing comparison-pivot value does not remove the anchor case from ranked
   tables, but its comparison value and delta render blank;
 - a comparison pair with either invalid operand is excluded from paired
   summaries; and
@@ -292,7 +294,7 @@ Blank, empty, and whitespace-only raw grouping values are represented as
 `(blank)`. For custom schemes, blank and unmatched values resolve to the
 scheme's configured `default`. Changing the order of selected dimensions
 changes display order only, not group membership. Groups are displayed in a
-deterministic string order. A group with no valid main-pivot `wcMargin` values
+deterministic string order. A group with no valid anchor-pivot `wcMargin` values
 is skipped and adds a warning to the measurement's existing warning list; other
 groups continue to render.
 
@@ -310,12 +312,15 @@ section contains:
 
 1. coverage and validation warnings;
 2. per-pivot compliance statistics;
-3. main-pivot comparisons;
+3. anchor-pivot comparisons;
 4. overall top-20 failures; and
 5. overall top-5 marginal passes.
 
 The worst valid `wcMargin` is rendered green when non-negative and red when
 negative.
+Row-4 fields physically located after the final pivot block are rendered after
+all pivot fields under a `User defined` group header with pivot-style value
+formatting.
 
 Grouped sections follow the overall section when grouping is enabled. A single
 methodology-and-assumptions section appears at the end.
@@ -338,7 +343,7 @@ Expected application errors are printed to stderr and return exit code 2.
 
 The checked-in `JUI.json` is a machine-specific working configuration. It
 points to `references/QMOM_OVT_v2.xlsm`, selects the `Combined` sheet, uses
-`GF-QMOM` as the main pivot, selects all currently supported measurements, and
+`GF-QMOM` as the anchor pivot, selects all currently supported measurements, and
 groups by `TEMP`. Its absolute workbook path must be changed on another
 machine. The repository also contains `references/FULL_COVERAGE.xlsm` as a
 second reference workbook.

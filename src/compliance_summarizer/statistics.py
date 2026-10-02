@@ -21,7 +21,7 @@ from .models import (
 
 def calculate_measurement_statistics(
     parsed: ParsedMeasurement,
-    main_pivot: str,
+    anchor_pivot: str,
     acceptable_variation: float,
     *,
     include_ranked_cases: bool = True,
@@ -31,10 +31,10 @@ def calculate_measurement_statistics(
     """Calculate deterministic statistics without consulting source ``Result?``."""
 
     definition = get_measurement_definition(parsed.measurement)
-    if main_pivot not in parsed.schema.pivot_names:
+    if anchor_pivot not in parsed.schema.pivot_names:
         available = ", ".join(parsed.schema.pivot_names)
         raise WorkbookValidationError(
-            f"Configured main pivot '{main_pivot}' is absent from worksheet "
+            f"Configured anchor pivot '{anchor_pivot}' is absent from worksheet "
             f"'{parsed.schema.name}'. Available pivots: {available}."
         )
 
@@ -42,27 +42,27 @@ def calculate_measurement_statistics(
         _pivot_main_statistics(parsed, pivot_name)
         for pivot_name in parsed.schema.pivot_names
     )
-    selected = next(item for item in pivot_statistics if item.pivot == main_pivot)
+    selected = next(item for item in pivot_statistics if item.pivot == anchor_pivot)
     if selected.failure_rate.denominator == 0:
         raise WorkbookValidationError(
-            f"Main pivot '{main_pivot}' has no valid wcMargin values for "
+            f"Anchor pivot '{anchor_pivot}' has no valid wcMargin values for "
             f"{parsed.measurement}; a compliance conclusion cannot be generated."
         )
 
-    main_failures = tuple(
+    anchor_failures = tuple(
         case
         for case in parsed.cases
-        if _value(case, main_pivot, definition.margin_statistic) is not None
-        and _value(case, main_pivot, definition.margin_statistic) < 0
+        if _value(case, anchor_pivot, definition.margin_statistic) is not None
+        and _value(case, anchor_pivot, definition.margin_statistic) < 0
     )
-    main_passes = tuple(
+    anchor_passes = tuple(
         case
         for case in parsed.cases
-        if _value(case, main_pivot, definition.margin_statistic) is not None
-        and _value(case, main_pivot, definition.margin_statistic) >= 0
+        if _value(case, anchor_pivot, definition.margin_statistic) is not None
+        and _value(case, anchor_pivot, definition.margin_statistic) >= 0
     )
     comparison_names = tuple(
-        pivot for pivot in parsed.schema.pivot_names if pivot != main_pivot
+        pivot for pivot in parsed.schema.pivot_names if pivot != anchor_pivot
     )
     if include_failure_cases is None:
         include_failure_cases = include_ranked_cases
@@ -70,32 +70,32 @@ def calculate_measurement_statistics(
         include_pass_cases = include_ranked_cases
     if include_failure_cases or include_pass_cases:
         ordered_failures = sorted(
-            main_failures,
+            anchor_failures,
             key=lambda case: (
-                _value(case, main_pivot, definition.margin_statistic),
+                _value(case, anchor_pivot, definition.margin_statistic),
                 _identity_sort_key(case.identity),
                 case.worksheet_row,
             ),
         )
         top_failure_cases = (
             tuple(
-                _case_statistics(case, main_pivot, comparison_names, definition)
+                _case_statistics(case, anchor_pivot, comparison_names, definition)
                 for case in ordered_failures[:20]
             )
             if include_failure_cases
             else ()
         )
         ordered_passes = sorted(
-            main_passes,
+            anchor_passes,
             key=lambda case: (
-                _value(case, main_pivot, definition.margin_statistic),
+                _value(case, anchor_pivot, definition.margin_statistic),
                 _identity_sort_key(case.identity),
                 case.worksheet_row,
             ),
         )
         top_pass_cases = (
             tuple(
-                _case_statistics(case, main_pivot, comparison_names, definition)
+                _case_statistics(case, anchor_pivot, comparison_names, definition)
                 for case in ordered_passes[:5]
             )
             if include_pass_cases
@@ -107,7 +107,7 @@ def calculate_measurement_statistics(
     comparisons = tuple(
         _comparison_statistics(
             parsed,
-            main_pivot,
+            anchor_pivot,
             comparison_pivot,
             acceptable_variation,
             definition,
@@ -117,7 +117,7 @@ def calculate_measurement_statistics(
 
     return MeasurementStatistics(
         measurement=parsed.measurement,
-        main_pivot=main_pivot,
+        anchor_pivot=anchor_pivot,
         acceptable_variation=acceptable_variation,
         case_count=len(parsed.cases),
         pivot_statistics=pivot_statistics,
@@ -161,31 +161,31 @@ def _pivot_main_statistics(
 
 def _case_statistics(
     case: ComplianceCase,
-    main_pivot: str,
+    anchor_pivot: str,
     comparison_names: tuple[str, ...],
     definition: MeasurementDefinition,
 ) -> FailureCaseStatistics:
-    main_average = _comparison_value(case, main_pivot, definition)
+    anchor_average = _comparison_value(case, anchor_pivot, definition)
     comparison_values: dict[str, float | None] = {}
     deltas: dict[str, float | None] = {}
     for pivot in comparison_names:
         comparison = _comparison_value(case, pivot, definition)
         comparison_values[pivot] = comparison
-        if main_average is None or comparison is None:
+        if anchor_average is None or comparison is None:
             deltas[pivot] = None
         else:
             try:
-                delta = definition.delta(main_average, comparison)
+                delta = definition.delta(anchor_average, comparison)
                 if not isfinite(delta):
                     raise ValueError("non-finite comparison delta")
                 deltas[pivot] = delta
             except Exception:
                 deltas[pivot] = CALCULATION_ERROR
-    margin = _value(case, main_pivot, definition.margin_statistic)
+    margin = _value(case, anchor_pivot, definition.margin_statistic)
     assert margin is not None
     return FailureCaseStatistics(
         case=case,
-        main_wc_margin=margin,
+        anchor_wc_margin=margin,
         comparison_values=comparison_values,
         deltas=deltas,
     )
@@ -193,22 +193,22 @@ def _case_statistics(
 
 def _comparison_statistics(
     parsed: ParsedMeasurement,
-    main_pivot: str,
+    anchor_pivot: str,
     comparison_pivot: str,
     tolerance: float,
     definition: MeasurementDefinition,
 ) -> ComparisonStatistics:
     paired: list[tuple[float, str]] = []
-    main_only_count = 0
+    anchor_only_count = 0
     calculation_error = False
     for case in parsed.cases:
-        main = _comparison_value(case, main_pivot, definition)
+        anchor = _comparison_value(case, anchor_pivot, definition)
         comparison = _comparison_value(case, comparison_pivot, definition)
-        if main is not None and comparison is None:
-            main_only_count += 1
-        if main is not None and comparison is not None:
+        if anchor is not None and comparison is None:
+            anchor_only_count += 1
+        if anchor is not None and comparison is not None:
             try:
-                delta = definition.delta(main, comparison)
+                delta = definition.delta(anchor, comparison)
                 if not isfinite(delta):
                     raise ValueError("non-finite comparison delta")
                 paired.append((delta, definition.classify(delta, tolerance)))
@@ -236,7 +236,7 @@ def _comparison_statistics(
         return ComparisonStatistics(
             comparison_pivot=comparison_pivot,
             paired_count=denominator,
-            main_only_count=main_only_count,
+            anchor_only_count=anchor_only_count,
             degradation_rate=Rate(0, denominator, error=True),
             unchanged_rate=Rate(0, denominator, error=True),
             improvement_rate=Rate(0, denominator, error=True),
@@ -249,7 +249,7 @@ def _comparison_statistics(
     return ComparisonStatistics(
         comparison_pivot=comparison_pivot,
         paired_count=denominator,
-        main_only_count=main_only_count,
+        anchor_only_count=anchor_only_count,
         degradation_rate=Rate(len(degradation), denominator),
         unchanged_rate=Rate(len(unchanged), denominator),
         improvement_rate=Rate(len(improvement), denominator),

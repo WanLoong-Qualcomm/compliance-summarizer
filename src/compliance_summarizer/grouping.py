@@ -39,7 +39,7 @@ class _GroupDimension:
 def calculate_grouped_analyses(
     parsed: ParsedMeasurement,
     group_by: tuple[str, ...],
-    main_pivot: str,
+    anchor_pivot: str,
     acceptable_variation: float,
     *,
     custom_groups: Mapping[str, CustomGroupDefinition] | None = None,
@@ -80,11 +80,11 @@ def calculate_grouped_analyses(
         cases = tuple(groups[group_token])
         group_key = display_keys[group_token]
         if not any(
-            case.pivot_values.get(main_pivot, {}).get("wcMargin") is not None
+            case.pivot_values.get(anchor_pivot, {}).get("wcMargin") is not None
             for case in cases
         ):
             warnings.append(
-                f"Group {_format_group_key(group_key)}: main pivot '{main_pivot}' "
+                f"Group {_format_group_key(group_key)}: anchor pivot '{anchor_pivot}' "
                 f"has no valid wcMargin values for {parsed.measurement}; "
                 "grouped analysis was skipped as a coverage gap."
             )
@@ -100,7 +100,7 @@ def calculate_grouped_analyses(
         )
         statistics = calculate_measurement_statistics(
             grouped,
-            main_pivot,
+            anchor_pivot,
             acceptable_variation,
             include_ranked_cases=include_failures or include_marginal_passes,
             include_failure_cases=include_failures,

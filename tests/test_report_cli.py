@@ -29,6 +29,7 @@ def test_report_is_self_contained_and_escapes_user_text(
     assert "Result?" in rendered
     assert "Overall DUT-1_VAR1 failures" in rendered
     assert "Overall DUT-1_VAR1 marginal passes" in rendered
+    assert '<div class="card"><span>Anchor</span><strong>DUT-1_VAR1</strong></div>' in rendered
     assert "The top 20 failures are ordered" in rendered
     assert "The top 5 marginal passes are ordered" in rendered
     assert "Cases" in rendered
@@ -40,7 +41,7 @@ def test_report_is_self_contained_and_escapes_user_text(
     assert "compliance-failure" in rendered
     assert "compliance-clear" in rendered
     assert "compliance-worst-failure" in rendered
-    assert "main-pivot-row" in rendered
+    assert "anchor-pivot-row" in rendered
     assert "FAIL_type" not in rendered
     assert ">DUT-1_VAR1 - DUT-2_VAR1</th>" in rendered
     assert "Degraded DUT-1_VAR1 failures" not in rendered
@@ -62,6 +63,51 @@ def test_report_tables_retain_arbitrary_metadata_fields(
     assert ">-50</td>" in rendered
 
 
+def test_trailing_user_defined_columns_follow_pivot_sections(
+    tmp_path, workbook_factory, sample_rows
+):
+    rows = [{**sample_rows[0], "USER_A": "custom", "USER_B": 7}]
+    workbook = workbook_factory(
+        rows,
+        trailing_headers=("USER_A", "USER_B"),
+    )
+    settings = write_settings(tmp_path / "JUI.json", workbook)
+
+    rendered = render_html(analyze(settings))
+    failure_table = rendered.split("<caption>Failure cases</caption>", 1)[1]
+    failure_head = failure_table.split("</thead>", 1)[0]
+
+    assert ">User defined</th>" in failure_head
+    assert failure_head.index(">DUT-2_VAR1</th>") < failure_head.index(">User defined</th>")
+    assert failure_head.index(">USER_A</th>") > failure_head.index(">MAX</th>")
+    assert '<td class="excel-pivot-value excel-column-shade-2">custom</td>' in failure_table
+
+
+def test_compliance_table_alternates_column_group_shades(
+    tmp_path, workbook_factory, sample_rows
+):
+    rows = [{**sample_rows[0], "USER_A": "custom"}]
+    workbook = workbook_factory(rows, trailing_headers=("USER_A",))
+    settings = write_settings(
+        tmp_path / "JUI.json",
+        workbook,
+        add_fail_type=True,
+    )
+
+    rendered = render_html(analyze(settings))
+    failure_table = rendered.split("<caption>Failure cases</caption>", 1)[1]
+
+    assert '<td class="excel-bound-value excel-column-shade-1">8</td>' in failure_table
+    assert '<td class="excel-bound-value excel-column-shade-1">12</td>' in failure_table
+    assert '<td class="excel-pivot-value excel-column-shade-2">9.2</td>' in failure_table
+    assert '<td class="excel-pivot-value excel-column-shade-1">8.8</td>' in failure_table
+    assert '<td class="excel-pivot-value excel-column-shade-2">custom</td>' in failure_table
+    assert '<td class="excel-delta excel-column-shade-1 comparison-improvement">0.5</td>' in failure_table
+    assert ".excel-column-shade-2 { background:#E6DDF3; }" in rendered
+    assert "tbody tr:nth-child(even) td.excel-column-shade-1" in rendered
+    assert "tbody tr:nth-child(even) td.excel-column-shade-2" in rendered
+
+
 def test_report_tables_include_fail_type_for_each_pivot_and_style_undef(
     tmp_path, workbook_factory, sample_rows
 ):
@@ -76,7 +122,7 @@ def test_report_tables_include_fail_type_for_each_pivot_and_style_undef(
 
     assert rendered.count(">FAIL type</th>") == 4
     assert ">UNDEF</td>" in rendered
-    assert "excel-fail-type excel-pivot-failure fail-type-undef" in rendered
+    assert "excel-fail-type excel-column-shade-2 excel-pivot-failure fail-type-undef" in rendered
 
     failure_table = rendered.split("<caption>Failure cases</caption>", 1)[1]
     failure_head = failure_table.split("</thead>", 1)[0]
@@ -140,12 +186,12 @@ def test_report_highlights_each_out_of_spec_pivot_value(
         channel: next(row for row in rendered_rows if f">{channel}</td>" in row)
         for channel in ("LL", "UL", "TIE")
     }
-    red_value = '<td class="excel-pivot-value excel-pivot-failure">'
+    red_value = '<td class="excel-pivot-value excel-column-shade-2 excel-pivot-failure">'
 
     assert rows_by_channel["LL"].count(f"{red_value}-1</td>") == 2
     assert f"{red_value}4</td>" not in rows_by_channel["LL"]
     assert f"{red_value}10</td>" in rows_by_channel["LL"]
-    assert '<td class="excel-pivot-value">9.2</td>' in rows_by_channel["LL"]
+    assert '<td class="excel-pivot-value excel-column-shade-2">9.2</td>' in rows_by_channel["LL"]
     assert f'{red_value}2</td>' not in rows_by_channel["UL"]
     assert f"{red_value}6</td>" in rows_by_channel["UL"]
     assert f"{red_value}10</td>" in rows_by_channel["UL"]
@@ -206,14 +252,14 @@ def test_midpoint_delta_header_describes_deviation_direction(
     assert ">DUT-2_VAR1 deviation - DUT-1_VAR1 deviation</th>" in rendered
 
 
-def test_main_pivot_is_first_in_pivot_compliance_table(
+def test_anchor_pivot_is_first_in_pivot_compliance_table(
     tmp_path, workbook_factory, sample_rows
 ):
     workbook = workbook_factory(sample_rows[:3])
     settings = write_settings(
         tmp_path / "JUI.json",
         workbook,
-        main_pivot="DUT-2_VAR1",
+        anchor_pivot="DUT-2_VAR1",
     )
 
     rendered = render_html(analyze(settings))
@@ -253,7 +299,7 @@ def test_passing_worst_wc_margin_is_highlighted_green(
         1,
     )[1]
 
-    assert '<td class="main-pivot-row compliance-clear">0</td>' in compliance_table
+    assert '<td class="anchor-pivot-row compliance-clear">0</td>' in compliance_table
 
 
 def test_cli_runs_end_to_end(tmp_path, workbook_factory, sample_rows, capsys):

@@ -31,7 +31,7 @@ Create a settings template:
 uv run compliance-summarizer --init-settings
 ```
 
-Edit `JUI.json`, especially `excel_file_path` and `main_pivot`, then run:
+Edit `JUI.json`, especially `excel_file_path` and `anchor_pivot`, then run:
 
 ```powershell
 uv run compliance-summarizer
@@ -56,7 +56,7 @@ also accepted. The supported fields are:
 | `block` | Must be `SIGPATH`. |
 | `testnames` | Non-empty list selected from `GAIN`, `GAIN-DNL`, `GCIB`, `GCTX`, `IP2ACS`, `IP2IB`, `IP3ACS`, `IP3IB`, `IP3TB`, `S11-LOW`, `S11-MID`, `S11-HIGH`, `SSNFWSPURREMOVAL`, `SSNF-FIRSTRBWSPURREMOVAL`, and `SSNF-LASTRBWSPURREMOVAL`. |
 | `background_information` | Optional text rendered in the run configuration. It is not sent to a model in the current scope. |
-| `main_pivot` | Exact pivot name discovered in row 2. It is the baseline for every comparison. |
+| `anchor_pivot` | Exact pivot name discovered in row 2. It is the anchor for every comparison. |
 | `add_fail_type` | Boolean. When `true`, each pivot exposes a derived `FAIL_type` field for failures. Defaults to `false`. |
 | `group_by` | Optional row-4 metadata fields or named schemes from `configs/groups.json`. `Result?`, `LL`, and `UL` cannot be used as source fields. Empty means overall analysis only. |
 | `include_group_failures` | Boolean. When `true`, each valid group includes its top-20 failure table. Defaults to `false`. |
@@ -91,7 +91,7 @@ definition contains a `delta_fn` and its finite, non-negative
 }
 ```
 
-`delta_fn` accepts only `"main - other"`, `"other - main"`, or
+`delta_fn` accepts only `"anchor - other"`, `"other - anchor"`, or
 `"midpoint deviation"`. The latter uses the row's LL/UL midpoint and the same
 signed comparison convention. There is no expression parser or arbitrary code
 execution. Tolerances are defined alongside their measurements in this file,
@@ -180,9 +180,9 @@ is negative and improvement is positive:
 
 | Measurements | Better direction | Report-oriented delta |
 | --- | --- | --- |
-| `GAIN`, `IP2ACS`, `IP2IB`, `IP3ACS`, `IP3IB`, `IP3TB` | Higher | main value − comparison value |
-| `GCIB`, `GCTX`, `S11-LOW`, `S11-MID`, `S11-HIGH`, `SSNFWSPURREMOVAL`, `SSNF-FIRSTRBWSPURREMOVAL`, `SSNF-LASTRBWSPURREMOVAL` | Lower | comparison value − main value |
-| `GAIN-DNL` | Smaller midpoint deviation | comparison deviation − main deviation |
+| `GAIN`, `IP2ACS`, `IP2IB`, `IP3ACS`, `IP3IB`, `IP3TB` | Higher | anchor value − comparison value |
+| `GCIB`, `GCTX`, `S11-LOW`, `S11-MID`, `S11-HIGH`, `SSNFWSPURREMOVAL`, `SSNF-FIRSTRBWSPURREMOVAL`, `SSNF-LASTRBWSPURREMOVAL` | Lower | comparison value − anchor value |
+| `GAIN-DNL` | Smaller midpoint deviation | comparison deviation − anchor deviation |
 
 An absolute signed delta within the inclusive measurement-specific
 `acceptable_variation` is classified as unchanged.
@@ -197,7 +197,7 @@ calculations are run independently for each group.
 Blank, empty, and whitespace-only group values are displayed as `(blank)`.
 Reordering `group_by` changes label order only, not group membership. A custom
 scheme displays its scheme name and resolved label, for example
-`sigpath-block=LB`. A group with no valid main-pivot `wcMargin` is skipped and
+`sigpath-block=LB`. A group with no valid anchor-pivot `wcMargin` is skipped and
 reported as a coverage warning.
 
 When `add_fail_type` is enabled, pivot-specific derived fields may also be used
@@ -216,9 +216,9 @@ The standalone HTML report contains no external assets or charts. It includes:
 - one complete overall summary for each selected measurement;
 - coverage and validation warnings;
 - per-pivot compliance statistics;
-- main-pivot comparisons against every other pivot;
-- an overall top-20 main-pivot failure table;
-- an overall top-5 main-pivot marginal-pass table;
+- anchor-pivot comparisons against every other pivot;
+- an overall top-20 anchor-pivot failure table;
+- an overall top-5 anchor-pivot marginal-pass table;
 - grouped analysis sections when `group_by` is non-empty; and
 - methodology and assumptions.
 
@@ -237,7 +237,11 @@ independently against the row's valid limits and is red when outside them.
 `wcValue` retains its normal styling.
 Ranked compliance tables use separate header lines for pivot group names, pivot
 field names, and worksheet/test metadata fields, mirroring the workbook's
-header-row structure.
+header-row structure. LL/UL, pivot, user-defined, and delta cells retain the
+row-wise blue/white alternation while their blue rows alternate by column group.
+Row-4 fields located to the right of the final pivot block are presented after
+the pivot sections under a `User defined` group header and use pivot-style
+value formatting.
 
 ## Test
 

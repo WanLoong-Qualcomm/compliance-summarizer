@@ -65,11 +65,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         main_stats = next(
             pivot
             for pivot in stats.pivot_statistics
-            if pivot.pivot == stats.main_pivot
+            if pivot.pivot == stats.anchor_pivot
         )
         print(f"Processed {stats.case_count} {stats.measurement} row(s).")
         print(
-            f"{stats.main_pivot} failures: {main_stats.failure_rate.numerator}/"
+            f"{stats.anchor_pivot} failures: {main_stats.failure_rate.numerator}/"
             f"{main_stats.failure_rate.denominator}."
         )
         print(

@@ -10,13 +10,13 @@ from typing import Literal
 
 
 ComparisonClass = Literal["degradation", "unchanged", "improvement"]
-DeltaFunction = Literal["main - other", "other - main", "midpoint deviation"]
+DeltaFunction = Literal["anchor - other", "other - anchor", "midpoint deviation"]
 
-MAIN_MINUS_OTHER: DeltaFunction = "main - other"
-OTHER_MINUS_MAIN: DeltaFunction = "other - main"
+ANCHOR_MINUS_OTHER: DeltaFunction = "anchor - other"
+OTHER_MINUS_ANCHOR: DeltaFunction = "other - anchor"
 MIDPOINT_DEVIATION: DeltaFunction = "midpoint deviation"
 _DELTA_FUNCTIONS = frozenset(
-    {MAIN_MINUS_OTHER, OTHER_MINUS_MAIN, MIDPOINT_DEVIATION}
+    {ANCHOR_MINUS_OTHER, OTHER_MINUS_ANCHOR, MIDPOINT_DEVIATION}
 )
 
 _DEFINITION_PATH = (
@@ -34,13 +34,13 @@ class MeasurementDefinition:
     acceptable_variation: float
     delta_fn: DeltaFunction
 
-    def delta(self, main_value: float, comparison_value: float) -> float:
-        """Return the configured signed main/comparison delta."""
+    def delta(self, anchor_value: float, comparison_value: float) -> float:
+        """Return the configured signed anchor/comparison delta."""
 
-        if self.delta_fn == MAIN_MINUS_OTHER:
-            return main_value - comparison_value
-        if self.delta_fn in {OTHER_MINUS_MAIN, MIDPOINT_DEVIATION}:
-            return comparison_value - main_value
+        if self.delta_fn == ANCHOR_MINUS_OTHER:
+            return anchor_value - comparison_value
+        if self.delta_fn in {OTHER_MINUS_ANCHOR, MIDPOINT_DEVIATION}:
+            return comparison_value - anchor_value
         raise ValueError(f"Unsupported measurement delta function '{self.delta_fn}'.")
 
     def classify(self, delta: float, tolerance: float) -> ComparisonClass:
@@ -57,7 +57,7 @@ class MeasurementDefinition:
     @property
     def formula_text(self) -> str:
         if self.delta_fn == MIDPOINT_DEVIATION:
-            return "comparison deviation - main deviation"
+            return "comparison deviation - anchor deviation"
         return self.delta_fn
 
     def transform_comparison_value(

@@ -38,6 +38,7 @@ def workbook_factory(tmp_path: Path):
         filename: str = "input.xlsx",
         omit_header: str | None = None,
         extra_headers: tuple[str, ...] = (),
+        trailing_headers: tuple[str, ...] = (),
         pivot_stats: tuple[str, ...] = PIVOT_STATS,
     ) -> Path:
         workbook = Workbook()
@@ -61,6 +62,10 @@ def workbook_factory(tmp_path: Path):
                 sheet.cell(3, first + offset, statistic)
                 sheet.cell(4, first + offset, f"Column{first + offset}")
 
+        trailing_start = start + len(pivots) * len(pivot_stats)
+        for offset, header in enumerate(trailing_headers):
+            sheet.cell(4, trailing_start + offset, header)
+
         for row_number, row_data in enumerate(rows, start=5):
             for column, header in enumerate(headers, start=1):
                 sheet.cell(row_number, column, row_data.get(header))
@@ -69,6 +74,12 @@ def workbook_factory(tmp_path: Path):
                 values = row_data.get(pivot, {})
                 for offset, statistic in enumerate(pivot_stats):
                     sheet.cell(row_number, first + offset, values.get(statistic))
+            for offset, header in enumerate(trailing_headers):
+                sheet.cell(
+                    row_number,
+                    trailing_start + offset,
+                    row_data.get(header),
+                )
         path = tmp_path / filename
         workbook.save(path)
         workbook.close()
@@ -169,7 +180,7 @@ def write_settings(
     workbook: Path,
     *,
     background: str = "",
-    main_pivot: str = "DUT-1_VAR1",
+    anchor_pivot: str = "DUT-1_VAR1",
     **overrides: object,
 ) -> Path:
     payload: dict[str, object] = {
@@ -178,7 +189,7 @@ def write_settings(
         "block": "SIGPATH",
         "testnames": ["GAIN"],
         "background_information": background,
-        "main_pivot": main_pivot,
+        "anchor_pivot": anchor_pivot,
         "group_by": [],
         "bypass_model": True,
     }

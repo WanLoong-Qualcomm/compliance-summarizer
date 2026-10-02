@@ -26,8 +26,8 @@ def test_measurement_registry_matches_json_definitions():
     }
 
     assert set(MEASUREMENTS) == expected
-    assert get_measurement_definition("GAIN").delta_fn == "main - other"
-    assert get_measurement_definition("GCIB").delta_fn == "other - main"
+    assert get_measurement_definition("GAIN").delta_fn == "anchor - other"
+    assert get_measurement_definition("GCIB").delta_fn == "other - anchor"
     definition = get_measurement_definition("GAIN-DNL")
     assert definition.delta_fn == "midpoint deviation"
     assert definition.acceptable_variation == 0.2

@@ -23,7 +23,7 @@ DEFAULT_SETTINGS: dict[str, object] = {
     "block": "SIGPATH",
     "testnames": ["GAIN"],
     "background_information": "",
-    "main_pivot": "",
+    "anchor_pivot": "",
     "group_by": [],
     "add_fail_type": False,
     "include_group_failures": False,
@@ -279,7 +279,7 @@ def load_settings(path: str | Path = "JUI.json") -> Settings:
     background = payload["background_information"]
     if not isinstance(background, str):
         raise ConfigurationError("'background_information' must be a string.")
-    main_pivot = _nonempty_string(payload["main_pivot"], "main_pivot")
+    anchor_pivot = _nonempty_string(payload["anchor_pivot"], "anchor_pivot")
 
     group_by = payload["group_by"]
     if type(group_by) is not list or any(not isinstance(item, str) for item in group_by):
@@ -338,7 +338,7 @@ def load_settings(path: str | Path = "JUI.json") -> Settings:
         block=block,
         testnames=normalized_measurements_tuple,
         background_information=background,
-        main_pivot=main_pivot,
+        anchor_pivot=anchor_pivot,
         group_by=tuple(normalized_group_by),
         add_fail_type=add_fail_type,
         include_group_failures=include_group_failures,

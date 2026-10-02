@@ -33,13 +33,13 @@ def analyze(settings_path: str | Path = "JUI.json") -> AnalysisResult:
         ).acceptable_variation
         statistics = calculate_measurement_statistics(
             parsed,
-            settings.main_pivot,
+            settings.anchor_pivot,
             acceptable_variation,
         )
         grouped_analyses, group_warnings = calculate_grouped_analyses(
             parsed,
             settings.group_by,
-            settings.main_pivot,
+            settings.anchor_pivot,
             acceptable_variation,
             custom_groups=custom_groups,
             add_fail_type=settings.add_fail_type,

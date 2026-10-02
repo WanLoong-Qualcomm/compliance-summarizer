@@ -63,7 +63,7 @@ The definitions in `configs/test_definition.json`, loaded by
 
 The JSON file is the source of truth for signed comparison functions and
 measurement-specific tolerances. `delta_fn` is one of the exact constants
-`"main - other"`, `"other - main"`, or `"midpoint deviation"`; the application
+`"anchor - other"`, `"other - anchor"`, or `"midpoint deviation"`; the application
 dispatches these values directly without an expression parser.
 
 The calculator implements:
@@ -73,7 +73,7 @@ The calculator implements:
 - worst margins and complete available failure identities;
 - top-20 failure ranking;
 - top-5 marginal-pass ranking;
-- main-pivot comparisons against every other pivot;
+- anchor-pivot comparisons against every other pivot;
 - tolerance-aware degradation, unchanged, and improvement classification;
 - signed maximum and average degradation/improvement; and
 - `GAIN-DNL` midpoint-deviation comparison using `LL` and `UL`; and
@@ -95,7 +95,7 @@ ranked tables. Rates with no valid pairs render blank.
 - String matching trims whitespace and ignores case; numeric/string equivalents
   match numerically, and valid JSON values are supported.
 - Field order affects labels only, not group membership.
-- Groups with no valid main-pivot `wcMargin` are skipped with a warning.
+- Groups with no valid anchor-pivot `wcMargin` are skipped with a warning.
 - Valid groups reuse the overall calculator. Per-group top-20 failures and
   top-5 marginal passes are independently controlled by the two group-table
   settings.
@@ -119,6 +119,10 @@ ranked tables. Rates with no valid pairs render blank.
   its normal styling.
 - Ranked compliance tables separate pivot group, pivot field, and worksheet
   metadata header lines to mirror the source workbook layout.
+- LL/UL, pivot, user-defined, and delta cells retain row-wise blue/white
+  alternation while blue shades alternate by column group.
+- Trailing row-4 fields after the final pivot block render after the pivot
+  sections under a `User defined` group with pivot-style value formatting.
 - Existing reports are protected unless `--overwrite` is supplied.
 - Writes use a temporary file and atomic replacement.
 
@@ -131,7 +135,7 @@ ranked tables. Rates with no valid pairs render blank.
 - Comparison deltas are oriented so degradation is negative and improvement is
   positive.
 - An absolute oriented delta within the inclusive tolerance is unchanged.
-- Main-pivot statistics use valid main values even when another pivot is
+- Anchor-pivot statistics use valid anchor values even when another pivot is
   missing a value.
 - Pairwise summaries use only valid pairs.
 - Ranking ties use stable identity fields and worksheet row.
@@ -147,7 +151,7 @@ ranked tables. Rates with no valid pairs render blank.
 ## Runtime configuration notes
 
 The checked-in `JUI.json` is a local working configuration. It points to
-`references/QMOM_OVT_v2.xlsm`, selects `Combined`, uses `GF-QMOM` as the main
+`references/QMOM_OVT_v2.xlsm`, selects `Combined`, uses `GF-QMOM` as the anchor
 pivot, selects all supported measurements, and groups by `TEMP`. Its absolute
 path is machine-specific and must be edited elsewhere.
 

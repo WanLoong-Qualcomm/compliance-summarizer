@@ -17,7 +17,7 @@ class Settings:
     block: str
     testnames: tuple[str, ...]
     background_information: str
-    main_pivot: str
+    anchor_pivot: str
     group_by: tuple[str, ...]
     add_fail_type: bool
     include_group_failures: bool
@@ -104,7 +104,7 @@ class PivotMainStatistics:
 @dataclass(frozen=True, slots=True)
 class FailureCaseStatistics:
     case: ComplianceCase
-    main_wc_margin: float
+    anchor_wc_margin: float
     comparison_values: dict[str, float | None]
     deltas: dict[str, float | str | None]
 
@@ -113,7 +113,7 @@ class FailureCaseStatistics:
 class ComparisonStatistics:
     comparison_pivot: str
     paired_count: int
-    main_only_count: int
+    anchor_only_count: int
     degradation_rate: Rate
     unchanged_rate: Rate
     improvement_rate: Rate
@@ -126,7 +126,7 @@ class ComparisonStatistics:
 @dataclass(frozen=True, slots=True)
 class MeasurementStatistics:
     measurement: str
-    main_pivot: str
+    anchor_pivot: str
     acceptable_variation: float
     case_count: int
     pivot_statistics: tuple[PivotMainStatistics, ...]

@@ -20,7 +20,7 @@
     "S11-HIGH"
   ],
   "background_information": "",
-  "main_pivot": "GF-QMOM",
+  "anchor_pivot": "GF-QMOM",
   "add_fail_type": true,
   "group_by": ["TEMP"],
   "include_group_failures": false,
