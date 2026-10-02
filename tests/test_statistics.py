@@ -131,7 +131,7 @@ def test_measurement_comparison_direction(
         "TESTNAME": measurement,
         "CHANNEL": (
             "IQ"
-            if measurement in {"IP2ACS", "IP2IB", "IP3ACS", "IP3IB", "IP3TB"}
+            if measurement in {"IP2ACS", "IP2IB", "IP3ACS", "IP3IB"}
             else sample_rows[0]["CHANNEL"]
         ),
         "DUT-1_VAR1": {
