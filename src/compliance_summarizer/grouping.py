@@ -18,6 +18,7 @@ from .models import (
 from .statistics import calculate_measurement_statistics
 from .workbook import (
     FAIL_TYPE_FIELD,
+    FAIL_TYPE_DISPLAY_NAME,
     canonical_metadata_header,
     fail_type_group_pivot,
     is_fail_type_group_field,
@@ -55,6 +56,7 @@ def calculate_grouped_analyses(
     dimensions = _resolve_dimensions(
         parsed,
         group_by,
+        anchor_pivot,
         custom_groups or {},
         add_fail_type=add_fail_type,
     )
@@ -127,6 +129,7 @@ def format_group_key(group_key: tuple[tuple[str, Any], ...]) -> str:
 def _resolve_dimensions(
     parsed: ParsedMeasurement,
     group_by: tuple[str, ...],
+    anchor_pivot: str,
     custom_groups: Mapping[str, CustomGroupDefinition],
     *,
     add_fail_type: bool,
@@ -137,7 +140,8 @@ def _resolve_dimensions(
     for item in group_by:
         requested = canonical_metadata_header(item)
         if is_fail_type_group_field(requested):
-            configured_pivot = fail_type_group_pivot(requested)
+            explicit_pivot = fail_type_group_pivot(requested)
+            configured_pivot = explicit_pivot or anchor_pivot
             matching_pivot = next(
                 (
                     pivot
@@ -157,7 +161,11 @@ def _resolve_dimensions(
                 continue
             dimensions.append(
                 _GroupDimension(
-                    label=f"{matching_pivot}.{FAIL_TYPE_FIELD}",
+                    label=(
+                        FAIL_TYPE_DISPLAY_NAME
+                        if explicit_pivot is None
+                        else f"{matching_pivot}.{FAIL_TYPE_FIELD}"
+                    ),
                     field=FAIL_TYPE_FIELD,
                     fail_type_pivot=matching_pivot,
                 )
@@ -190,10 +198,16 @@ def _resolve_dimensions(
         )
     if missing:
         available = ", ".join(parsed.schema.metadata_columns)
+        available_groups = ", ".join(sorted(custom_groups))
+        group_hint = (
+            f" Available custom groups: {available_groups}."
+            if available_groups
+            else " No custom groups are available from configs/groups.json."
+        )
         raise WorkbookValidationError(
             f"Configured group_by field(s) are absent from worksheet "
             f"'{parsed.schema.name}': {', '.join(missing)}. Available metadata "
-            f"fields: {available}."
+            f"fields: {available}.{group_hint}"
         )
     return tuple(dimensions)
 

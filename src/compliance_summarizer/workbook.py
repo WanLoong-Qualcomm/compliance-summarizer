@@ -26,6 +26,7 @@ REQUIRED_METADATA_HEADERS = ("TESTNAME", "MEASPORT")
 PATH_EXCLUDED_HEADERS = ("Result?", "LL", "UL")
 FAIL_TYPE_FIELD = "FAIL_type"
 FAIL_TYPE_DISPLAY_NAME = "FAIL type"
+FAIL_TYPE_GROUP_ALIAS = "FAIL TYPE"
 FAIL_TYPE_GROUP_SUFFIX = ".FAIL_TYPE"
 FAIL_TYPE_UNDEFINED = "UNDEF"
 FAIL_TYPE_TOLERANCE = 1e-9
@@ -489,13 +490,16 @@ def canonical_metadata_header(value: object) -> str:
 def is_fail_type_group_field(value: object) -> bool:
     """Return whether a grouping field addresses a pivot's derived fail type."""
 
-    return canonical_metadata_header(value).endswith(FAIL_TYPE_GROUP_SUFFIX)
+    field = canonical_metadata_header(value)
+    return field == FAIL_TYPE_GROUP_ALIAS or field.endswith(FAIL_TYPE_GROUP_SUFFIX)
 
 
 def fail_type_group_pivot(value: object) -> str | None:
     """Return the configured pivot portion of a derived fail-type field."""
 
     field = canonical_metadata_header(value)
+    if field == FAIL_TYPE_GROUP_ALIAS:
+        return None
     if not field.endswith(FAIL_TYPE_GROUP_SUFFIX):
         return None
     pivot = field[: -len(FAIL_TYPE_GROUP_SUFFIX)].strip()

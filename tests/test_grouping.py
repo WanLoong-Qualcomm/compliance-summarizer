@@ -201,6 +201,30 @@ def test_grouping_reports_metadata_field_absent_from_workbook(
         )
 
 
+def test_grouping_missing_field_lists_available_custom_groups(
+    workbook_factory, sample_rows
+):
+    parsed = load_measurement(workbook_factory(sample_rows[:3]), "Combined")
+    definition = CustomGroupDefinition(
+        name="sigpath-block",
+        field="MEASPORT",
+        groups=(("LB", ("L1",)),),
+        default="OTHER",
+    )
+
+    with pytest.raises(
+        WorkbookValidationError,
+        match="Available custom groups: SIGPATH-BLOCK",
+    ):
+        calculate_grouped_analyses(
+            parsed,
+            ("CUSTOM_FIELD",),
+            "DUT-1_VAR1",
+            0.2,
+            custom_groups={"SIGPATH-BLOCK": definition},
+        )
+
+
 def test_grouping_can_use_pivot_specific_fail_type(
     workbook_factory, sample_rows
 ):
@@ -230,6 +254,34 @@ def test_grouping_can_use_pivot_specific_fail_type(
         item.group_key[0][1]
         for item in grouped
     } == {"LL", "UL", "(blank)"}
+
+
+def test_grouping_can_use_anchor_fail_type_display_name(
+    workbook_factory, sample_rows
+):
+    rows = sample_rows[:3]
+    rows[0]["DUT-1_VAR1"]["MIN"] = 7.0
+    rows[1]["UL"] = 10.0
+    rows[1]["DUT-1_VAR1"]["wcMargin"] = -1.0
+    rows[1]["DUT-1_VAR1"]["MIN"] = 9.0
+    rows[1]["DUT-1_VAR1"]["MAX"] = 11.0
+    rows[2]["DUT-1_VAR1"]["wcMargin"] = 0.0
+    parsed = load_measurement(
+        workbook_factory(rows),
+        "Combined",
+        add_fail_type=True,
+    )
+
+    grouped, warnings = calculate_grouped_analyses(
+        parsed,
+        ("FAIL type",),
+        "DUT-1_VAR1",
+        0.2,
+        add_fail_type=True,
+    )
+
+    assert warnings == ()
+    assert {item.group_key[0][1] for item in grouped} == {"LL", "UL", "(blank)"}
 
 
 def test_blank_group_is_explicit_and_groups_without_margin_are_skipped(

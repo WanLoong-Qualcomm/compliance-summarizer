@@ -183,6 +183,10 @@ String matching trims whitespace and ignores case. Numeric/string equivalents
 match numerically, and valid JSON scalar, list, and object values are accepted.
 Blank values and values that match no allowed value use `default`.
 
+The derived fail-type display name `FAIL type` may also be used in `group_by`
+when `add_fail_type` is enabled; it groups by the anchor pivot's fail type.
+Pivot-specific forms such as `DUT-1_VAR1.FAIL_type` remain supported.
+
 ## 6. Measurement definitions and statistics
 
 The runtime definitions loaded from `configs/test_definition.json` define the

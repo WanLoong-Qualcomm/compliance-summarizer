@@ -191,6 +191,22 @@ def test_fail_type_grouping_normalizes_field_when_enabled(
     assert settings.group_by == ("DUT-1_VAR1.FAIL_TYPE",)
 
 
+def test_fail_type_display_name_is_supported_when_enabled(
+    tmp_path, workbook_factory, sample_rows
+):
+    workbook = workbook_factory(sample_rows)
+    path = write_settings(
+        tmp_path / "JUI.json",
+        workbook,
+        add_fail_type=True,
+        group_by=["FAIL type"],
+    )
+
+    settings = load_settings(path)
+
+    assert settings.group_by == ("FAIL TYPE",)
+
+
 def test_create_template_does_not_overwrite(tmp_path):
     path = tmp_path / "JUI.json"
     create_settings_template(path)

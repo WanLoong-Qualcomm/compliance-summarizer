@@ -60,7 +60,7 @@ also accepted. The supported fields are:
 | `background_information` | Optional text rendered in the run configuration. It is not sent to a model in the current scope. |
 | `anchor_pivot` | Exact pivot name discovered in row 2. It is the anchor for every comparison. |
 | `add_fail_type` | Boolean. When `true`, each pivot exposes a derived `FAIL_type` field for failures. Defaults to `false`. |
-| `group_by` | Optional row-4 metadata fields or named schemes from `configs/groups.json`. `Result?`, `LL`, and `UL` cannot be used as source fields. Empty means overall analysis only. |
+| `group_by` | Optional row-4 metadata fields, named schemes from `configs/groups.json`, or derived fail-type fields. `Result?`, `LL`, and `UL` cannot be used as source fields. Empty means overall analysis only. |
 | `include_group_failures` | Boolean. When `true`, each valid group includes its top-20 failure table. Defaults to `false`. |
 | `include_group_marginal_passes` | Boolean. When `true`, each valid group includes its top-5 marginal-pass table. Defaults to `false`. |
 | `bypass_model` | Must be `true` in version 0.2.0. |
@@ -195,8 +195,11 @@ scheme displays its scheme name and resolved label, for example
 reported as a coverage warning.
 
 When `add_fail_type` is enabled, pivot-specific derived fields may also be used
-in `group_by`, for example `DUT-1_VAR1.FAIL_type`. Referencing such a field
-while `add_fail_type` is disabled is rejected.
+in `group_by`, for example `DUT-1_VAR1.FAIL_type`. The display-name alias
+`FAIL type` groups by the configured anchor pivot's derived fail type. Referencing
+either form while `add_fail_type` is disabled is rejected. If a grouping name is
+not a workbook metadata field, the validation error also lists the custom group
+names loaded from `configs/groups.json`.
 
 Grouped sections always include pivot compliance and pivot comparisons. Their
 top-20 failure and top-5 marginal-pass tables are controlled independently by

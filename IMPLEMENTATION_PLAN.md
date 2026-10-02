@@ -28,7 +28,8 @@ current scope.
   metadata fields or named schemes from `configs/groups.json`; custom scheme
   source fields are checked against the source-result/limit exclusions.
 - `add_fail_type` is an optional boolean feature flag. Pivot-specific derived
-  grouping fields such as `DUT-1_VAR1.FAIL_type` require it to be enabled.
+  grouping fields such as `DUT-1_VAR1.FAIL_type`, and the `FAIL type` alias for
+  the anchor pivot, require it to be enabled.
 - `include_group_failures` and `include_group_marginal_passes` are validated as
   booleans and default to `false`.
 - `bypass_model` must be `true`.
@@ -100,7 +101,7 @@ ranked tables. Rates with no valid pairs render blank.
   top-5 marginal passes are independently controlled by the two group-table
   settings.
 - Pivot-specific derived `FAIL_type` fields can be used as grouping dimensions
-  when enabled.
+  when enabled. The display-name alias `FAIL type` uses the anchor pivot.
 
 ### 5. HTML report
 
