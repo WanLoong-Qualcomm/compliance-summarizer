@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+
 from compliance_summarizer.app import analyze
 from compliance_summarizer.cli import main
 from compliance_summarizer.report import render_html
@@ -39,6 +41,7 @@ def test_report_is_self_contained_and_escapes_user_text(
     assert "compliance-clear" in rendered
     assert "compliance-worst-failure" in rendered
     assert "main-pivot-row" in rendered
+    assert "FAIL_type" not in rendered
     assert "Degraded DUT-1_VAR1 failures" not in rendered
 
 
@@ -56,6 +59,89 @@ def test_report_tables_retain_arbitrary_metadata_fields(
 
     assert ">TEMP</th>" in rendered
     assert ">-50</td>" in rendered
+
+
+def test_report_tables_include_fail_type_for_each_pivot_and_style_undef(
+    tmp_path, workbook_factory, sample_rows
+):
+    workbook = workbook_factory(sample_rows)
+    settings = write_settings(
+        tmp_path / "JUI.json",
+        workbook,
+        add_fail_type=True,
+    )
+
+    rendered = render_html(analyze(settings))
+
+    assert rendered.count(">FAIL type</th>") == 4
+    assert ">UNDEF</td>" in rendered
+    assert "excel-fail-type excel-pivot-failure fail-type-undef" in rendered
+
+
+def test_report_highlights_each_out_of_spec_pivot_value(
+    tmp_path, workbook_factory, sample_rows
+):
+    template = sample_rows[0]
+    rows = [
+        {
+            **template,
+            "CHANNEL": "LL",
+            "LL": 0.0,
+            "UL": 5.0,
+            "DUT-1_VAR1": {
+                **template["DUT-1_VAR1"],
+                "MIN": -1.0,
+                "MAX": 4.0,
+                "wcMargin": -1.0,
+            },
+        },
+        {
+            **template,
+            "CHANNEL": "UL",
+            "LL": 0.0,
+            "UL": 5.0,
+            "DUT-1_VAR1": {
+                **template["DUT-1_VAR1"],
+                "MIN": 2.0,
+                "MAX": 6.0,
+                "wcMargin": -1.0,
+            },
+        },
+        {
+            **template,
+            "CHANNEL": "TIE",
+            "LL": 0.0,
+            "UL": 5.0,
+            "DUT-1_VAR1": {
+                **template["DUT-1_VAR1"],
+                "MIN": -1.0,
+                "MAX": 6.0,
+                "wcMargin": -1.0,
+            },
+        },
+    ]
+    settings = write_settings(
+        tmp_path / "JUI.json",
+        workbook_factory(rows),
+        add_fail_type=True,
+    )
+
+    rendered = render_html(analyze(settings))
+    rendered_rows = re.findall(r"<tr>(.*?)</tr>", rendered, flags=re.DOTALL)
+    rows_by_channel = {
+        channel: next(row for row in rendered_rows if f">{channel}</td>" in row)
+        for channel in ("LL", "UL", "TIE")
+    }
+    red_value = '<td class="excel-pivot-value excel-pivot-failure">'
+
+    assert rows_by_channel["LL"].count(f"{red_value}-1</td>") == 2
+    assert f"{red_value}4</td>" not in rows_by_channel["LL"]
+    assert f"{red_value}10</td>" in rows_by_channel["LL"]
+    assert '<td class="excel-pivot-value">9.2</td>' in rows_by_channel["LL"]
+    assert f'{red_value}2</td>' not in rows_by_channel["UL"]
+    assert f"{red_value}6</td>" in rows_by_channel["UL"]
+    assert f"{red_value}10</td>" in rows_by_channel["UL"]
+    assert f"{red_value}6</td>" in rows_by_channel["TIE"]
 
 
 def test_report_repeats_the_current_summary_for_each_measurement(

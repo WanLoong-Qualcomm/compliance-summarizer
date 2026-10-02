@@ -107,16 +107,19 @@ application does not save or modify the workbook and does not execute macros.
 - `testnames`: one or more unique supported measurements;
 - `background_information`: optional display text;
 - `main_pivot`: non-empty exact pivot name, validated against the workbook;
+- `add_fail_type`: optional boolean that adds derived per-pivot `FAIL_type`
+  fields, defaulting to `false`;
 - `group_by`: zero or more unique discovered metadata fields or named custom
-  grouping schemes from `configs/groups.json`; custom scheme source fields
-  cannot be `Result?`, `LL`, or `UL`; and
+  grouping schemes from `configs/groups.json`, or pivot-specific derived fields
+  such as `DUT-1_VAR1.FAIL_type`; custom scheme source fields cannot be
+  `Result?`, `LL`, or `UL`; and
 - `include_group_failures`: boolean controlling per-group top-20 failure tables;
 - `include_group_marginal_passes`: boolean controlling per-group top-5
   marginal-pass tables; and
 - `bypass_model`: currently required to be the JSON value `true`.
 
-The two `include_group_*` fields are optional for compatibility with older
-settings files and default to `false` when omitted.
+The `add_fail_type` and two `include_group_*` fields are optional for
+compatibility with older settings files and default to `false` when omitted.
 
 Supported measurements are:
 
@@ -240,6 +243,18 @@ or equal to the configured tolerance is unchanged. Rates with no valid pairs
 have no percentage value and render blank in HTML. The HTML report displays
 percentages only; pair counts remain available in the structured result.
 
+When enabled, each pivot's derived `FAIL_type` is calculated only for negative
+valid `wcMargin` values. `MIN - LL` and `UL - MAX` are compared against
+`wcMargin` using `math.isclose` with `rel_tol=1e-9` and `abs_tol=1e-9`.
+Matching one direction returns `LL` or `UL`; matching both returns `TIE`; and
+matching neither, or lacking enough values to classify the failure, returns
+`UNDEF`. Non-failures return blank.
+
+In ranked report tables, negative `wcMargin` and displayed `FAIL_type` values
+remain red. Each of `MIN`, `MAX`, `NN_25C AVG`, and `MEAN` is independently
+highlighted when outside the row's valid limits. `wcValue` retains its normal
+styling.
+
 ## 7. Coverage and validation behavior
 
 Blank, malformed, and non-finite numeric cells are normalized to unavailable
@@ -265,6 +280,9 @@ retained for traceability and tie-breaking.
 
 `group_by: []` preserves overall-only behavior. A non-empty `group_by` list can
 contain raw discovered row-4 metadata fields, named custom schemes, or both.
+When `add_fail_type` is enabled it can also contain pivot-specific derived
+fields such as `DUT-1_VAR1.FAIL_type`; those fields are rejected when the
+feature is disabled.
 Raw fields and custom scheme source fields are validated against the discovered
 worksheet metadata. Cases are partitioned by the unique combination of the
 resolved grouping dimensions.
@@ -332,6 +350,7 @@ Implemented now:
 - coverage-gap and validation warnings;
 - optional raw-field and named custom grouping;
 - optional per-measurement row filters;
+- optional per-pivot `FAIL_type` classification;
 - standalone escaped HTML; and
 - CLI initialization, processing, overwrite protection, and version output.
 

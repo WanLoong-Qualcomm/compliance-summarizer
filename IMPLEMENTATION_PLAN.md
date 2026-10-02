@@ -27,6 +27,8 @@ current scope.
 - `group_by` entries are normalized and deduplicated. Entries may be discovered
   metadata fields or named schemes from `configs/groups.json`; custom scheme
   source fields are checked against the source-result/limit exclusions.
+- `add_fail_type` is an optional boolean feature flag. Pivot-specific derived
+  grouping fields such as `DUT-1_VAR1.FAIL_type` require it to be enabled.
 - `include_group_failures` and `include_group_marginal_passes` are validated as
   booleans and default to `false`.
 - `bypass_model` must be `true`.
@@ -74,7 +76,9 @@ The calculator implements:
 - main-pivot comparisons against every other pivot;
 - tolerance-aware degradation, unchanged, and improvement classification;
 - signed maximum and average degradation/improvement; and
-- `GAIN-DNL` midpoint-deviation comparison using `LL` and `UL`.
+- `GAIN-DNL` midpoint-deviation comparison using `LL` and `UL`; and
+- optional per-pivot `FAIL_type` classification using `MIN - LL` and
+  `UL - MAX` with a `1e-9` absolute/relative tolerance.
 
 Missing or invalid values are unavailable data, not failures. Comparison
 statistics use valid pairs only. A missing comparison operand remains blank in
@@ -95,6 +99,8 @@ ranked tables. Rates with no valid pairs render blank.
 - Valid groups reuse the overall calculator. Per-group top-20 failures and
   top-5 marginal passes are independently controlled by the two group-table
   settings.
+- Pivot-specific derived `FAIL_type` fields can be used as grouping dimensions
+  when enabled.
 
 ### 5. HTML report
 
@@ -106,6 +112,11 @@ ranked tables. Rates with no valid pairs render blank.
 - Methodology and assumptions appear once at the end.
 - Expected unavailable values render blank.
 - Unexpected calculation failures render as bold red `ERROR`.
+- Derived `FAIL type` columns follow the pivot-field color convention, and
+  `UNDEF` values render as bold red `UNDEF`.
+- Negative `wcMargin` remains red. `MIN`, `MAX`, `NN_25C AVG`, and `MEAN` are
+  independently red when outside the row's valid limits; `wcValue` retains
+  its normal styling.
 - Existing reports are protected unless `--overwrite` is supplied.
 - Writes use a temporary file and atomic replacement.
 
@@ -124,6 +135,9 @@ ranked tables. Rates with no valid pairs render blank.
 - Ranking ties use stable identity fields and worksheet row.
 - `GAIN-DNL` uses absolute deviation from the row's `LL`/`UL` midpoint and
   excludes invalid-limit rows only from affected comparisons.
+- `FAIL_type` is blank for non-failures, uses tolerance-based matching for
+  `MIN - LL` and `UL - MAX`, and reports `UNDEF` when a failure cannot be
+  classified.
 - Grouped reports include ranked case tables only when their corresponding
   group-table settings are enabled.
 - No model/provider call is made in version 0.2.0.

@@ -57,6 +57,7 @@ also accepted. The supported fields are:
 | `testnames` | Non-empty list selected from `GAIN`, `GAIN-DNL`, `GCIB`, `GCTX`, `IP2ACS`, `IP2IB`, `IP3ACS`, `IP3IB`, `IP3TB`, `S11-LOW`, `S11-MID`, `S11-HIGH`, `SSNFWSPURREMOVAL`, `SSNF-FIRSTRBWSPURREMOVAL`, and `SSNF-LASTRBWSPURREMOVAL`. |
 | `background_information` | Optional text rendered in the run configuration. It is not sent to a model in the current scope. |
 | `main_pivot` | Exact pivot name discovered in row 2. It is the baseline for every comparison. |
+| `add_fail_type` | Boolean. When `true`, each pivot exposes a derived `FAIL_type` field for failures. Defaults to `false`. |
 | `group_by` | Optional row-4 metadata fields or named schemes from `configs/groups.json`. `Result?`, `LL`, and `UL` cannot be used as source fields. Empty means overall analysis only. |
 | `include_group_failures` | Boolean. When `true`, each valid group includes its top-20 failure table. Defaults to `false`. |
 | `include_group_marginal_passes` | Boolean. When `true`, each valid group includes its top-5 marginal-pass table. Defaults to `false`. |
@@ -138,6 +139,12 @@ other row-4 metadata fields are discovered dynamically and retained in case
 identity and ranked report tables. `Result?`, `LL`, and `UL` are retained as
 source context or limits but are excluded from case identity and grouping.
 
+When `add_fail_type` is enabled, each pivot also exposes a derived `FAIL_type`
+value. It is `LL`, `UL`, or `TIE` for classified negative `wcMargin` failures,
+`UNDEF` when a failure cannot be matched to either limit direction, and blank
+for non-failures. `UNDEF` is rendered in bold red. The derived value is not a
+workbook source column.
+
 Each pivot must contain `wcMargin` and at least one of `MEAN` or `NN_25C AVG`.
 When both comparison-statistic columns exist, `MEAN` is preferred. The parser
 also retains `MIN`, `MAX`, and `wcValue` when present. Recognized statistic
@@ -162,6 +169,10 @@ macros are not executed.
 - `GAIN-DNL` compares absolute deviation from the row's `LL`/`UL` midpoint.
   Missing or invalid limits produce a warning and exclude that row only from
   affected comparisons.
+- When enabled, `FAIL_type` compares `MIN - LL` and `UL - MAX` with the pivot's
+  negative `wcMargin` using a deterministic `1e-9` absolute/relative
+  tolerance. Matching both directions produces `TIE`; matching neither
+  produces `UNDEF`.
 
 Comparison values use `MEAN` when that column is available for the pivot and
 otherwise use `NN_25C AVG`. The report-oriented delta is signed so degradation
@@ -189,6 +200,10 @@ scheme displays its scheme name and resolved label, for example
 `sigpath-block=LB`. A group with no valid main-pivot `wcMargin` is skipped and
 reported as a coverage warning.
 
+When `add_fail_type` is enabled, pivot-specific derived fields may also be used
+in `group_by`, for example `DUT-1_VAR1.FAIL_type`. Referencing such a field
+while `add_fail_type` is disabled is rejected.
+
 Grouped sections always include pivot compliance and pivot comparisons. Their
 top-20 failure and top-5 marginal-pass tables are controlled independently by
 `include_group_failures` and `include_group_marginal_passes`.
@@ -208,9 +223,15 @@ The standalone HTML report contains no external assets or charts. It includes:
 - methodology and assumptions.
 
 The ranked tables retain worksheet row, discovered metadata, source pivot
-fields, `Result?`, limits, and signed comparison deltas. Expected unavailable
+fields, derived `FAIL type` columns when enabled, `Result?`, limits, and signed
+comparison deltas. The internal grouping field remains `FAIL_type`, so a
+pivot-specific grouping entry uses `DUT-1_VAR1.FAIL_type`. Expected unavailable
 values render blank. Unexpected calculation failures render as bold red
-`ERROR`.
+`ERROR`; unclassifiable fail types render as bold red `UNDEF`.
+Negative `wcMargin` and displayed `FAIL type` values use failure-red text.
+Within pivot fields, each of `MIN`, `MAX`, `NN_25C AVG`, and `MEAN` is checked
+independently against the row's valid limits and is red when outside them.
+`wcValue` retains its normal styling.
 
 ## Test
 

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections import Counter
 from contextlib import closing
-from math import isfinite
+from math import isclose, isfinite
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
@@ -24,6 +24,12 @@ from .models import (
 
 REQUIRED_METADATA_HEADERS = ("TESTNAME", "MEASPORT")
 PATH_EXCLUDED_HEADERS = ("Result?", "LL", "UL")
+FAIL_TYPE_FIELD = "FAIL_type"
+FAIL_TYPE_DISPLAY_NAME = "FAIL type"
+FAIL_TYPE_GROUP_SUFFIX = ".FAIL_TYPE"
+FAIL_TYPE_UNDEFINED = "UNDEF"
+FAIL_TYPE_TOLERANCE = 1e-9
+SPECIFICATION_STATISTICS = frozenset({"MIN", "MAX", "MEAN", "NN_25C AVG"})
 _PATH_EXCLUDED_CANONICAL = frozenset(
     "RESULT?" if header == "Result?" else header.upper()
     for header in PATH_EXCLUDED_HEADERS
@@ -46,6 +52,7 @@ def load_measurement(
     measurement: str = "GAIN",
     *,
     test_filters: Mapping[str, Mapping[str, Sequence[object]]] | None = None,
+    add_fail_type: bool = False,
 ) -> ParsedMeasurement:
     """Load and validate one measurement without modifying the source workbook."""
 
@@ -54,6 +61,7 @@ def load_measurement(
         sheet_name,
         (measurement,),
         test_filters=test_filters,
+        add_fail_type=add_fail_type,
     )[0]
 
 
@@ -63,6 +71,7 @@ def load_measurements(
     measurements: Sequence[str],
     *,
     test_filters: Mapping[str, Mapping[str, Sequence[object]]] | None = None,
+    add_fail_type: bool = False,
 ) -> tuple[ParsedMeasurement, ...]:
     """Load and validate multiple measurements from one workbook pass."""
 
@@ -94,6 +103,7 @@ def load_measurements(
             schema,
             measurements,
             test_filters=test_filters,
+            add_fail_type=add_fail_type,
         )
 
 
@@ -206,10 +216,17 @@ def parse_measurement_rows(
     worksheet: Any,
     schema: SheetSchema,
     measurement: str,
+    *,
+    add_fail_type: bool = False,
 ) -> ParsedMeasurement:
     """Normalize one measurement and summarize unusable numeric cells."""
 
-    return parse_measurements_rows(worksheet, schema, (measurement,))[0]
+    return parse_measurements_rows(
+        worksheet,
+        schema,
+        (measurement,),
+        add_fail_type=add_fail_type,
+    )[0]
 
 
 def parse_measurements_rows(
@@ -218,6 +235,7 @@ def parse_measurements_rows(
     measurements: Sequence[str],
     *,
     test_filters: Mapping[str, Mapping[str, Sequence[object]]] | None = None,
+    add_fail_type: bool = False,
 ) -> tuple[ParsedMeasurement, ...]:
     """Normalize multiple measurements in one worksheet row scan."""
 
@@ -314,6 +332,7 @@ def parse_measurements_rows(
 
         pivot_values: dict[str, dict[str, float | None]] = {}
         pivot_raw_values: dict[str, dict[str, Any]] = {}
+        pivot_fail_types: dict[str, str | None] = {}
         for pivot in schema.pivots:
             normalized: dict[str, float | None] = {}
             raw_values: dict[str, Any] = {}
@@ -332,6 +351,10 @@ def parse_measurements_rows(
                 rows_with_gap[requested][pivot.name] += 1
             pivot_values[pivot.name] = normalized
             pivot_raw_values[pivot.name] = raw_values
+            pivot_fail_types[pivot.name] = _calculate_fail_type(
+                normalized,
+                metadata_values,
+            )
 
         cases_by_measurement[requested].append(
             ComplianceCase(
@@ -340,6 +363,7 @@ def parse_measurements_rows(
                 metadata_values=metadata_values,
                 pivot_values=pivot_values,
                 pivot_raw_values=pivot_raw_values,
+                pivot_fail_types=pivot_fail_types,
             )
         )
 
@@ -406,6 +430,7 @@ def parse_measurements_rows(
                 cases=tuple(cases),
                 coverage=coverage,
                 warnings=tuple(warnings),
+                fail_type_enabled=add_fail_type,
             )
         )
     return tuple(results)
@@ -451,6 +476,22 @@ def canonical_metadata_header(value: object) -> str:
     return text.upper()
 
 
+def is_fail_type_group_field(value: object) -> bool:
+    """Return whether a grouping field addresses a pivot's derived fail type."""
+
+    return canonical_metadata_header(value).endswith(FAIL_TYPE_GROUP_SUFFIX)
+
+
+def fail_type_group_pivot(value: object) -> str | None:
+    """Return the configured pivot portion of a derived fail-type field."""
+
+    field = canonical_metadata_header(value)
+    if not field.endswith(FAIL_TYPE_GROUP_SUFFIX):
+        return None
+    pivot = field[: -len(FAIL_TYPE_GROUP_SUFFIX)].strip()
+    return pivot or None
+
+
 def is_path_excluded_header(value: object) -> bool:
     """Return whether a metadata header is excluded from path identity/grouping."""
 
@@ -492,3 +533,55 @@ def _numeric(value: object) -> tuple[float | None, bool]:
     if not isfinite(numeric):
         return None, True
     return numeric, False
+
+
+def _calculate_fail_type(
+    pivot_values: Mapping[str, float | None],
+    metadata_values: Mapping[str, object],
+) -> str | None:
+    """Classify a valid pivot failure by the limit that produced its margin."""
+
+    margin = pivot_values.get("wcMargin")
+    if margin is None or margin >= 0:
+        return None
+
+    lower, _ = _numeric(metadata_values.get("LL"))
+    upper, _ = _numeric(metadata_values.get("UL"))
+    minimum = pivot_values.get("MIN")
+    maximum = pivot_values.get("MAX")
+    candidates: list[str] = []
+    if minimum is not None and lower is not None and isclose(
+        minimum - lower,
+        margin,
+        rel_tol=FAIL_TYPE_TOLERANCE,
+        abs_tol=FAIL_TYPE_TOLERANCE,
+    ):
+        candidates.append("LL")
+    if upper is not None and maximum is not None and isclose(
+        upper - maximum,
+        margin,
+        rel_tol=FAIL_TYPE_TOLERANCE,
+        abs_tol=FAIL_TYPE_TOLERANCE,
+    ):
+        candidates.append("UL")
+    if len(candidates) == 2:
+        return "TIE"
+    if candidates:
+        return candidates[0]
+    return FAIL_TYPE_UNDEFINED
+
+
+def value_outside_limits(
+    value: float | None,
+    metadata_values: Mapping[str, object],
+) -> bool:
+    """Return whether a finite statistic is outside the row's valid limits."""
+
+    if value is None:
+        return False
+    lower, _ = _numeric(metadata_values.get("LL"))
+    upper, _ = _numeric(metadata_values.get("UL"))
+    return (
+        (lower is not None and value < lower)
+        or (upper is not None and value > upper)
+    )

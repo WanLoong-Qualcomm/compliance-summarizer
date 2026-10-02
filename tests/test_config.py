@@ -24,6 +24,7 @@ def test_load_settings_resolves_workbook_relative_to_settings(
 
     assert settings.excel_file_path == workbook.resolve()
     assert settings.testnames == ("GAIN",)
+    assert settings.add_fail_type is False
     assert settings.include_group_failures is False
     assert settings.include_group_marginal_passes is False
 
@@ -35,6 +36,7 @@ def test_load_settings_resolves_workbook_relative_to_settings(
         ({"testnames": []}, "testnames.*GAIN"),
         ({"acceptable_variation": {"GAIN": 0.2}}, "Unsupported.*acceptable_variation"),
         ({"group_by": ["Result?"]}, "Unsupported.*group_by"),
+        ({"add_fail_type": "yes"}, "add_fail_type.*boolean"),
         ({"include_group_failures": "yes"}, "include_group_failures.*boolean"),
         (
             {"include_group_marginal_passes": 1},
@@ -139,6 +141,37 @@ def test_group_by_rejects_duplicate_fields(tmp_path, workbook_factory, sample_ro
 
     with pytest.raises(ConfigurationError, match="duplicate"):
         load_settings(path)
+
+
+def test_fail_type_grouping_requires_feature_flag(
+    tmp_path, workbook_factory, sample_rows
+):
+    workbook = workbook_factory(sample_rows)
+    path = write_settings(
+        tmp_path / "JUI.json",
+        workbook,
+        group_by=["DUT-1_VAR1.FAIL_type"],
+    )
+
+    with pytest.raises(ConfigurationError, match="requires 'add_fail_type'"):
+        load_settings(path)
+
+
+def test_fail_type_grouping_normalizes_field_when_enabled(
+    tmp_path, workbook_factory, sample_rows
+):
+    workbook = workbook_factory(sample_rows)
+    path = write_settings(
+        tmp_path / "JUI.json",
+        workbook,
+        add_fail_type=True,
+        group_by=["DUT-1_VAR1.FAIL_type"],
+    )
+
+    settings = load_settings(path)
+
+    assert settings.add_fail_type is True
+    assert settings.group_by == ("DUT-1_VAR1.FAIL_TYPE",)
 
 
 def test_create_template_does_not_overwrite(tmp_path):

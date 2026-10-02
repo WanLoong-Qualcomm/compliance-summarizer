@@ -19,6 +19,7 @@ class Settings:
     background_information: str
     main_pivot: str
     group_by: tuple[str, ...]
+    add_fail_type: bool
     include_group_failures: bool
     include_group_marginal_passes: bool
     bypass_model: bool
@@ -57,6 +58,7 @@ class ComplianceCase:
     metadata_values: dict[str, Any]
     pivot_values: dict[str, dict[str, float | None]]
     pivot_raw_values: dict[str, dict[str, Any]]
+    pivot_fail_types: dict[str, str | None] = field(default_factory=dict)
 
 
 @dataclass(frozen=True, slots=True)
@@ -74,6 +76,7 @@ class ParsedMeasurement:
     cases: tuple[ComplianceCase, ...]
     coverage: tuple[CoverageSummary, ...]
     warnings: tuple[str, ...] = ()
+    fail_type_enabled: bool = False
 
 
 @dataclass(frozen=True, slots=True)

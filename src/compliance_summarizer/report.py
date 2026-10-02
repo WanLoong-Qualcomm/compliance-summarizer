@@ -16,6 +16,12 @@ from .measurements import (
     THIS_MINUS_OTHER,
     get_measurement_definition,
 )
+from .workbook import (
+    FAIL_TYPE_DISPLAY_NAME,
+    FAIL_TYPE_UNDEFINED,
+    SPECIFICATION_STATISTICS,
+    value_outside_limits,
+)
 from .models import (
     CALCULATION_ERROR,
     AnalysisResult,
@@ -118,13 +124,16 @@ vertical-align:top; white-space:nowrap; }} tr:nth-child(even) td {{ background:#
 .excel-compliance-table tbody td.excel-bound-value {{ background:#D9E2F3; color:#0000FF; }}
 .excel-compliance-table tbody td.excel-pivot-value,
 .excel-compliance-table tbody td.excel-delta {{ background:#D9E2F3; }}
+.excel-compliance-table tbody td.excel-fail-type {{ background:#D9E2F3; }}
 .excel-compliance-table tbody tr:nth-child(even) td.excel-bound-value,
 .excel-compliance-table tbody tr:nth-child(even) td.excel-pivot-value,
-.excel-compliance-table tbody tr:nth-child(even) td.excel-delta {{ background:#FFFFFF; }}
+.excel-compliance-table tbody tr:nth-child(even) td.excel-delta,
+.excel-compliance-table tbody tr:nth-child(even) td.excel-fail-type {{ background:#FFFFFF; }}
 .excel-compliance-table tbody td.excel-pivot-failure {{ color:#FF0000; }}
 .excel-compliance-table tbody td.excel-result-pass {{ background:#C6EFCE; color:#006100; }}
 .excel-compliance-table tbody td.excel-result-fail {{ background:#FFC7CE; color:#9C0006; }}
 .calculation-error {{ color:#C00000; font-weight:700; }}
+.fail-type-undef {{ color:#FF0000; font-weight:700; }}
 .comparison-degradation {{ color:var(--bad); font-weight:400; }}
 .comparison-improvement {{ color:var(--good); font-weight:400; }}
 .compliance-failure {{ color:var(--bad); }}
@@ -212,6 +221,7 @@ def _configuration_table(analysis: AnalysisResult) -> str:
         ("Block", settings.block),
         ("Testnames", ", ".join(settings.testnames)),
         ("Baseline", settings.main_pivot),
+        ("Add fail type", settings.add_fail_type),
         (
             "Acceptable variation",
             "; ".join(
@@ -528,6 +538,11 @@ def _ranked_case_table(
                 for statistic, _ in sorted(
                     pivot.statistics.items(), key=lambda item: item[1]
                 )
+            )
+            + (
+                (FAIL_TYPE_DISPLAY_NAME,)
+                if analysis.settings.add_fail_type
+                else ()
             ),
         )
         for pivot in schema.pivots
@@ -556,14 +571,28 @@ def _ranked_case_table(
                 classes.append("excel-metadata-value")
         for pivot in schema.pivots:
             margin = case.pivot_values[pivot.name].get("wcMargin")
-            pivot_class = "excel-pivot-value"
-            if margin is not None and margin < 0:
-                pivot_class += " excel-pivot-failure"
+            fail_type = case.pivot_fail_types.get(pivot.name)
             for statistic, _ in sorted(
                 pivot.statistics.items(), key=lambda field: field[1]
             ):
                 row.append(case.pivot_raw_values[pivot.name].get(statistic))
-                classes.append(pivot_class)
+                statistic_class = "excel-pivot-value"
+                if statistic == "wcMargin" and margin is not None and margin < 0:
+                    statistic_class += " excel-pivot-failure"
+                elif statistic in SPECIFICATION_STATISTICS and value_outside_limits(
+                    case.pivot_values[pivot.name].get(statistic),
+                    case.metadata_values,
+                ):
+                    statistic_class += " excel-pivot-failure"
+                classes.append(statistic_class)
+            if analysis.settings.add_fail_type:
+                row.append(fail_type)
+                fail_type_class = "excel-fail-type"
+                if fail_type is not None:
+                    fail_type_class += " excel-pivot-failure"
+                if fail_type == FAIL_TYPE_UNDEFINED:
+                    fail_type_class += " fail-type-undef"
+                classes.append(fail_type_class)
         for comparison in stats.comparisons:
             delta = case_statistics.deltas[comparison.comparison_pivot]
             row.append(delta)

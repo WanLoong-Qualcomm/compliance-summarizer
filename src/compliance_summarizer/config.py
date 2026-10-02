@@ -10,7 +10,11 @@ from pathlib import Path
 from .errors import ConfigurationError
 from .measurements import MEASUREMENTS
 from .models import CustomGroupDefinition, Settings
-from .workbook import canonical_metadata_header, is_path_excluded_header
+from .workbook import (
+    canonical_metadata_header,
+    is_fail_type_group_field,
+    is_path_excluded_header,
+)
 
 
 DEFAULT_SETTINGS: dict[str, object] = {
@@ -21,12 +25,13 @@ DEFAULT_SETTINGS: dict[str, object] = {
     "background_information": "",
     "main_pivot": "",
     "group_by": [],
+    "add_fail_type": False,
     "include_group_failures": False,
     "include_group_marginal_passes": False,
     "bypass_model": True,
 }
 OPTIONAL_SETTINGS = frozenset(
-    {"include_group_failures", "include_group_marginal_passes"}
+    {"add_fail_type", "include_group_failures", "include_group_marginal_passes"}
 )
 
 
@@ -289,11 +294,24 @@ def load_settings(path: str | Path = "JUI.json") -> Settings:
                 f"Unsupported 'group_by' field '{item}': source-result and limit "
                 "fields cannot be used for grouping."
             )
+        if is_fail_type_group_field(field) and payload.get(
+            "add_fail_type", DEFAULT_SETTINGS["add_fail_type"]
+        ) is not True:
+            raise ConfigurationError(
+                f"'group_by' field '{item}' requires 'add_fail_type' to be true."
+            )
         if field in normalized_group_by:
             raise ConfigurationError(
                 f"'group_by' contains duplicate field '{field}'."
             )
         normalized_group_by.append(field)
+
+    add_fail_type = payload.get(
+        "add_fail_type",
+        DEFAULT_SETTINGS["add_fail_type"],
+    )
+    if type(add_fail_type) is not bool:
+        raise ConfigurationError("'add_fail_type' must be a boolean.")
 
     include_group_failures = payload.get(
         "include_group_failures",
@@ -322,6 +340,7 @@ def load_settings(path: str | Path = "JUI.json") -> Settings:
         background_information=background,
         main_pivot=main_pivot,
         group_by=tuple(normalized_group_by),
+        add_fail_type=add_fail_type,
         include_group_failures=include_group_failures,
         include_group_marginal_passes=include_group_marginal_passes,
         bypass_model=True,

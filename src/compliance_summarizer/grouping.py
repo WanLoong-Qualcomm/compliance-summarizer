@@ -16,7 +16,13 @@ from .models import (
     ParsedMeasurement,
 )
 from .statistics import calculate_measurement_statistics
-from .workbook import canonical_metadata_header, is_path_excluded_header
+from .workbook import (
+    FAIL_TYPE_FIELD,
+    canonical_metadata_header,
+    fail_type_group_pivot,
+    is_fail_type_group_field,
+    is_path_excluded_header,
+)
 
 
 _BLANK = object()
@@ -27,6 +33,7 @@ class _GroupDimension:
     label: str
     field: str
     definition: CustomGroupDefinition | None = None
+    fail_type_pivot: str | None = None
 
 
 def calculate_grouped_analyses(
@@ -36,6 +43,7 @@ def calculate_grouped_analyses(
     acceptable_variation: float,
     *,
     custom_groups: Mapping[str, CustomGroupDefinition] | None = None,
+    add_fail_type: bool = False,
     include_failures: bool = False,
     include_marginal_passes: bool = False,
 ) -> tuple[tuple[GroupedAnalysis, ...], tuple[str, ...]]:
@@ -44,7 +52,12 @@ def calculate_grouped_analyses(
     if not group_by:
         return (), ()
 
-    dimensions = _resolve_dimensions(parsed, group_by, custom_groups or {})
+    dimensions = _resolve_dimensions(
+        parsed,
+        group_by,
+        custom_groups or {},
+        add_fail_type=add_fail_type,
+    )
     groups: dict[tuple[object, ...], list[ComplianceCase]] = defaultdict(list)
     display_keys: dict[tuple[object, ...], tuple[tuple[str, Any], ...]] = {}
     for case in parsed.cases:
@@ -83,6 +96,7 @@ def calculate_grouped_analyses(
             cases=cases,
             coverage=parsed.coverage,
             warnings=(),
+            fail_type_enabled=parsed.fail_type_enabled,
         )
         statistics = calculate_measurement_statistics(
             grouped,
@@ -114,12 +128,41 @@ def _resolve_dimensions(
     parsed: ParsedMeasurement,
     group_by: tuple[str, ...],
     custom_groups: Mapping[str, CustomGroupDefinition],
+    *,
+    add_fail_type: bool,
 ) -> tuple[_GroupDimension, ...]:
     dimensions: list[_GroupDimension] = []
     missing: list[str] = []
     excluded: list[str] = []
     for item in group_by:
         requested = canonical_metadata_header(item)
+        if is_fail_type_group_field(requested):
+            configured_pivot = fail_type_group_pivot(requested)
+            matching_pivot = next(
+                (
+                    pivot
+                    for pivot in parsed.schema.pivot_names
+                    if configured_pivot is not None
+                    and pivot.casefold() == configured_pivot.casefold()
+                ),
+                None,
+            )
+            if not add_fail_type or not parsed.fail_type_enabled:
+                raise WorkbookValidationError(
+                    f"Configured group_by field '{item}' requires 'add_fail_type' "
+                    "to be true."
+                )
+            if matching_pivot is None:
+                missing.append(requested)
+                continue
+            dimensions.append(
+                _GroupDimension(
+                    label=f"{matching_pivot}.{FAIL_TYPE_FIELD}",
+                    field=FAIL_TYPE_FIELD,
+                    fail_type_pivot=matching_pivot,
+                )
+            )
+            continue
         definition = custom_groups.get(requested)
         if definition is None:
             dimension = _GroupDimension(label=requested, field=requested)
@@ -156,6 +199,8 @@ def _resolve_dimensions(
 
 
 def _dimension_value(case: ComplianceCase, dimension: _GroupDimension) -> object:
+    if dimension.fail_type_pivot is not None:
+        return case.pivot_fail_types.get(dimension.fail_type_pivot)
     value = case.metadata_values.get(dimension.field)
     if dimension.definition is None:
         return value

@@ -130,3 +130,102 @@ def test_absent_measurement_stops_processing(workbook_factory, sample_rows):
 
     with pytest.raises(WorkbookValidationError, match="no rows.*GAIN"):
         load_measurement(workbook, "Combined")
+
+
+def test_fail_type_classifies_lower_upper_tie_and_non_failure(
+    workbook_factory, sample_rows
+):
+    template = sample_rows[0]
+    rows = [
+        {
+            **template,
+            "CHANNEL": "LL",
+            "DUT-1_VAR1": {
+                **template["DUT-1_VAR1"],
+                "MIN": 7.0,
+                "MAX": 11.0,
+                "wcMargin": -1.0,
+            },
+        },
+        {
+            **template,
+            "CHANNEL": "UL",
+            "UL": 10.0,
+            "DUT-1_VAR1": {
+                **template["DUT-1_VAR1"],
+                "MIN": 9.0,
+                "MAX": 11.0,
+                "wcMargin": -1.0,
+            },
+        },
+        {
+            **template,
+            "CHANNEL": "TIE",
+            "DUT-1_VAR1": {
+                **template["DUT-1_VAR1"],
+                "MIN": 7.0,
+                "MAX": 11.0,
+                "wcMargin": -1.0,
+            },
+            "UL": 10.0,
+        },
+        {
+            **template,
+            "CHANNEL": "PASS",
+            "DUT-1_VAR1": {
+                **template["DUT-1_VAR1"],
+                "MIN": 9.0,
+                "MAX": 11.0,
+                "wcMargin": 0.0,
+            },
+        },
+    ]
+    workbook = workbook_factory(rows)
+
+    parsed = load_measurement(workbook, "Combined", add_fail_type=True)
+
+    assert [
+        case.pivot_fail_types["DUT-1_VAR1"] for case in parsed.cases
+    ] == ["LL", "UL", "TIE", None]
+    assert parsed.fail_type_enabled is True
+
+
+def test_fail_type_uses_decimal_tolerance(workbook_factory, sample_rows):
+    row = {
+        **sample_rows[0],
+        "DUT-1_VAR1": {
+            **sample_rows[0]["DUT-1_VAR1"],
+            "MIN": 7.0,
+            "wcMargin": -1.0000000005,
+        },
+    }
+
+    parsed = load_measurement(
+        workbook_factory([row]),
+        "Combined",
+        add_fail_type=True,
+    )
+
+    assert parsed.cases[0].pivot_fail_types["DUT-1_VAR1"] == "LL"
+
+
+def test_fail_type_is_undefined_when_failure_direction_cannot_be_matched(
+    workbook_factory, sample_rows
+):
+    row = {
+        **sample_rows[0],
+        "DUT-1_VAR1": {
+            **sample_rows[0]["DUT-1_VAR1"],
+            "MIN": 8.5,
+            "MAX": 11.5,
+            "wcMargin": -1.0,
+        },
+    }
+
+    parsed = load_measurement(
+        workbook_factory([row]),
+        "Combined",
+        add_fail_type=True,
+    )
+
+    assert parsed.cases[0].pivot_fail_types["DUT-1_VAR1"] == "UNDEF"

@@ -23,6 +23,7 @@ def analyze(settings_path: str | Path = "JUI.json") -> AnalysisResult:
         settings.compliance_sheet_name,
         settings.testnames,
         test_filters=test_filters,
+        add_fail_type=settings.add_fail_type,
     )
     measurement_analyses = []
     for parsed in parsed_measurements:
@@ -41,6 +42,7 @@ def analyze(settings_path: str | Path = "JUI.json") -> AnalysisResult:
             settings.main_pivot,
             acceptable_variation,
             custom_groups=custom_groups,
+            add_fail_type=settings.add_fail_type,
             include_failures=settings.include_group_failures,
             include_marginal_passes=settings.include_group_marginal_passes,
         )
