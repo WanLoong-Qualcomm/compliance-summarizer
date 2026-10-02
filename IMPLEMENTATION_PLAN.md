@@ -117,6 +117,8 @@ ranked tables. Rates with no valid pairs render blank.
 - Negative `wcMargin` remains red. `MIN`, `MAX`, `NN_25C AVG`, and `MEAN` are
   independently red when outside the row's valid limits; `wcValue` retains
   its normal styling.
+- Ranked compliance tables separate pivot group, pivot field, and worksheet
+  metadata header lines to mirror the source workbook layout.
 - Existing reports are protected unless `--overwrite` is supplied.
 - Writes use a temporary file and atomic replacement.
 

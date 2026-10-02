@@ -77,6 +77,13 @@ def test_report_tables_include_fail_type_for_each_pivot_and_style_undef(
     assert ">UNDEF</td>" in rendered
     assert "excel-fail-type excel-pivot-failure fail-type-undef" in rendered
 
+    failure_table = rendered.split("<caption>Failure cases</caption>", 1)[1]
+    failure_head = failure_table.split("</thead>", 1)[0]
+    assert failure_head.count("<tr>") == 3
+    assert failure_head.index(">MIN</th>") < failure_head.index(">LNAMODE</th>")
+    assert 'th.worksheet-spacer { background:var(--panel); border:0; }' in rendered
+    assert 'class="pivot-spacer"' in rendered
+
 
 def test_report_highlights_each_out_of_spec_pivot_value(
     tmp_path, workbook_factory, sample_rows

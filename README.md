@@ -232,6 +232,9 @@ Negative `wcMargin` and displayed `FAIL type` values use failure-red text.
 Within pivot fields, each of `MIN`, `MAX`, `NN_25C AVG`, and `MEAN` is checked
 independently against the row's valid limits and is red when outside them.
 `wcValue` retains its normal styling.
+Ranked compliance tables use separate header lines for pivot group names, pivot
+field names, and worksheet/test metadata fields, mirroring the workbook's
+header-row structure.
 
 ## Test
 

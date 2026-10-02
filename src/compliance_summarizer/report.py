@@ -112,12 +112,16 @@ caption {{ text-align:left; font-weight:700; margin-bottom:8px; }} th {{ backgro
 position:sticky; top:0; text-align:left; }} th,td {{ border:1px solid #7F7F7F; padding:8px 9px;
 vertical-align:top; white-space:nowrap; }} tr:nth-child(even) td {{ background:#fafbfe; }}
 .grouped-table thead tr:nth-child(2) th {{ top:34px; }}
+.grouped-table thead tr:nth-child(3) th {{ top:68px; }}
 .grouped-table .header-spacer {{ background:var(--panel); }}
 .grouped-table .pivot-group {{ text-align:center; }}
 .excel-summary-table thead th,
 .excel-compliance-table thead th {{ background:#FCE4D6; color:#000000; text-align:center; }}
 .excel-compliance-table thead th.header-spacer {{ background:var(--panel); border:0; }}
-.excel-compliance-table thead th.worksheet-spacer {{ background:var(--panel); border:1px solid #7F7F7F; }}
+.excel-compliance-table thead th.worksheet-spacer {{ background:var(--panel); border:0; }}
+.excel-compliance-table thead th.pivot-spacer {{ background:var(--panel);
+border-top:0; border-bottom:1px solid #7F7F7F; border-left:1px solid #7F7F7F;
+border-right:1px solid #7F7F7F; }}
 .excel-compliance-table thead th.worksheet-header {{ background:var(--panel); }}
 .excel-compliance-table tbody td {{ text-align:center; }}
 .excel-compliance-table tbody td.excel-metadata-value {{ background:#E2F0D9; }}
@@ -697,15 +701,25 @@ def _grouped_table(
         for label, headers in groups
         if headers
     )
-    detail_head = "".join(
+    group_detail_head = "".join(
+        f'<th scope="col">{_escape(header)}</th>'
+        for _, headers in groups
+        for header in headers
+    )
+    metadata_head = "".join(
         (
             f'<th class="worksheet-header" scope="col">{_escape(header)}</th>'
             if header == "Worksheet row"
             else f'<th scope="col">{_escape(header)}</th>'
         )
         for header in leading_headers
-    ) + "".join(
-        f'<th scope="col">{_escape(header)}</th>'
+    )
+    leading_spacers = "".join(
+        '<th class="header-spacer" aria-hidden="true"></th>'
+        for _ in leading_headers
+    )
+    group_spacers = "".join(
+        '<th class="pivot-spacer" aria-hidden="true"></th>'
         for _, headers in groups
         for header in headers
     )
@@ -729,7 +743,9 @@ def _grouped_table(
         body = f'<tr><td colspan="{total_columns}">{_escape(empty)}</td></tr>'
     return (
         f'<div class="scroll"><table class="{_escape(table_class)}"><caption>{_escape(caption)}</caption>'
-        f"<thead><tr>{fixed_head}{group_head}</tr><tr>{detail_head}</tr></thead>"
+        f"<thead><tr>{fixed_head}{group_head}</tr>"
+        f"<tr>{leading_spacers}{group_detail_head}</tr>"
+        f"<tr>{metadata_head}{group_spacers}</tr></thead>"
         f"<tbody>{body}</tbody></table></div>"
     )
 

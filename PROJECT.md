@@ -253,7 +253,8 @@ matching neither, or lacking enough values to classify the failure, returns
 In ranked report tables, negative `wcMargin` and displayed `FAIL_type` values
 remain red. Each of `MIN`, `MAX`, `NN_25C AVG`, and `MEAN` is independently
 highlighted when outside the row's valid limits. `wcValue` retains its normal
-styling.
+styling. Ranked tables place pivot group names, pivot field names, and
+worksheet/test metadata headers on separate lines to mirror the workbook.
 
 ## 7. Coverage and validation behavior
 
