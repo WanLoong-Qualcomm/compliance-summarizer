@@ -42,6 +42,7 @@ def test_report_is_self_contained_and_escapes_user_text(
     assert "compliance-worst-failure" in rendered
     assert "main-pivot-row" in rendered
     assert "FAIL_type" not in rendered
+    assert ">DUT-1_VAR1 - DUT-2_VAR1</th>" in rendered
     assert "Degraded DUT-1_VAR1 failures" not in rendered
 
 
@@ -179,6 +180,32 @@ def test_report_repeats_the_current_summary_for_each_measurement(
     assert rendered.index(">Methodology and assumptions</h2>") > rendered.index(">GCIB compliance summary</h1>")
 
 
+def test_midpoint_delta_header_describes_deviation_direction(
+    tmp_path, workbook_factory, sample_rows
+):
+    row = {
+        **sample_rows[0],
+        "TESTNAME": "GAIN-DNL",
+        "DUT-1_VAR1": {
+            **sample_rows[0]["DUT-1_VAR1"],
+            "NN_25c AVG": 10.5,
+        },
+        "DUT-2_VAR1": {
+            **sample_rows[0]["DUT-2_VAR1"],
+            "NN_25c AVG": 11.5,
+        },
+    }
+    settings = write_settings(
+        tmp_path / "JUI.json",
+        workbook_factory([row]),
+        testnames=["GAIN-DNL"],
+    )
+
+    rendered = render_html(analyze(settings))
+
+    assert ">DUT-2_VAR1 deviation - DUT-1_VAR1 deviation</th>" in rendered
+
+
 def test_main_pivot_is_first_in_pivot_compliance_table(
     tmp_path, workbook_factory, sample_rows
 ):
@@ -202,6 +229,31 @@ def test_main_pivot_is_first_in_pivot_compliance_table(
         1,
     )[1]
     assert coverage_table.index(">DUT-2_VAR1</td>") < coverage_table.index(">DUT-1_VAR1</td>")
+
+
+def test_passing_worst_wc_margin_is_highlighted_green(
+    tmp_path, workbook_factory, sample_rows
+):
+    row = {
+        **sample_rows[0],
+        "DUT-1_VAR1": {
+            **sample_rows[0]["DUT-1_VAR1"],
+            "wcMargin": 0.0,
+        },
+        "DUT-2_VAR1": {
+            **sample_rows[0]["DUT-2_VAR1"],
+            "wcMargin": 1.0,
+        },
+    }
+    settings = write_settings(tmp_path / "JUI.json", workbook_factory([row]))
+
+    rendered = render_html(analyze(settings))
+    compliance_table = rendered.split(
+        "<caption>Pivot compliance</caption>",
+        1,
+    )[1]
+
+    assert '<td class="main-pivot-row compliance-clear">0</td>' in compliance_table
 
 
 def test_cli_runs_end_to_end(tmp_path, workbook_factory, sample_rows, capsys):

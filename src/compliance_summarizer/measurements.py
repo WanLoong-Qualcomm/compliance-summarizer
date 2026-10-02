@@ -10,13 +10,13 @@ from typing import Literal
 
 
 ComparisonClass = Literal["degradation", "unchanged", "improvement"]
-DeltaFunction = Literal["this - other", "other - this", "midpoint deviation"]
+DeltaFunction = Literal["main - other", "other - main", "midpoint deviation"]
 
-THIS_MINUS_OTHER: DeltaFunction = "this - other"
-OTHER_MINUS_THIS: DeltaFunction = "other - this"
+MAIN_MINUS_OTHER: DeltaFunction = "main - other"
+OTHER_MINUS_MAIN: DeltaFunction = "other - main"
 MIDPOINT_DEVIATION: DeltaFunction = "midpoint deviation"
 _DELTA_FUNCTIONS = frozenset(
-    {THIS_MINUS_OTHER, OTHER_MINUS_THIS, MIDPOINT_DEVIATION}
+    {MAIN_MINUS_OTHER, OTHER_MINUS_MAIN, MIDPOINT_DEVIATION}
 )
 
 _DEFINITION_PATH = (
@@ -37,9 +37,9 @@ class MeasurementDefinition:
     def delta(self, main_value: float, comparison_value: float) -> float:
         """Return the configured signed main/comparison delta."""
 
-        if self.delta_fn == THIS_MINUS_OTHER:
+        if self.delta_fn == MAIN_MINUS_OTHER:
             return main_value - comparison_value
-        if self.delta_fn in {OTHER_MINUS_THIS, MIDPOINT_DEVIATION}:
+        if self.delta_fn in {OTHER_MINUS_MAIN, MIDPOINT_DEVIATION}:
             return comparison_value - main_value
         raise ValueError(f"Unsupported measurement delta function '{self.delta_fn}'.")
 
@@ -56,6 +56,8 @@ class MeasurementDefinition:
 
     @property
     def formula_text(self) -> str:
+        if self.delta_fn == MIDPOINT_DEVIATION:
+            return "comparison deviation - main deviation"
         return self.delta_fn
 
     def transform_comparison_value(

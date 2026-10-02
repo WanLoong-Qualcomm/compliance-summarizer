@@ -12,8 +12,9 @@ from typing import Iterable, Sequence
 from .errors import ReportError
 from .grouping import format_group_key
 from .measurements import (
+    MAIN_MINUS_OTHER,
     MIDPOINT_DEVIATION,
-    THIS_MINUS_OTHER,
+    OTHER_MINUS_MAIN,
     get_measurement_definition,
 )
 from .workbook import (
@@ -325,8 +326,13 @@ def _pivot_table(
                 if item.failure_rate.percentage == 0
                 else "compliance-failure",
             )
-        if item.worst_wc_margin is not None and item.worst_wc_margin < 0:
-            classes[4] = _append_class(classes[4], "compliance-worst-failure")
+        if item.worst_wc_margin is not None:
+            classes[4] = _append_class(
+                classes[4],
+                "compliance-worst-failure"
+                if item.worst_wc_margin < 0
+                else "compliance-clear",
+            )
         cell_classes.append(tuple(classes))
 
     return _table(
@@ -422,7 +428,7 @@ def _comparison_content(stats: MeasurementStatistics) -> str:
             "Each deviation is the absolute distance from the row's LL/UL midpoint; "
             "smaller deviation is better."
         )
-    elif definition.delta_fn == THIS_MINUS_OTHER:
+    elif definition.delta_fn == MAIN_MINUS_OTHER:
         explanation = "Higher values are better."
     else:
         explanation = "Lower values are better."
@@ -552,7 +558,7 @@ def _ranked_case_table(
         for pivot in schema.pivots
     )
     comparison_headers = tuple(
-        f"Δ({stats.main_pivot}, {comparison.comparison_pivot})"
+        _comparison_header(stats, comparison.comparison_pivot)
         for comparison in stats.comparisons
     )
     rows: list[tuple[object, ...]] = []
@@ -748,6 +754,17 @@ def _grouped_table(
         f"<tr>{metadata_head}{group_spacers}</tr></thead>"
         f"<tbody>{body}</tbody></table></div>"
     )
+
+
+def _comparison_header(stats: MeasurementStatistics, comparison_pivot: str) -> str:
+    definition = get_measurement_definition(stats.measurement)
+    if definition.delta_fn == MAIN_MINUS_OTHER:
+        return f"{stats.main_pivot} - {comparison_pivot}"
+    if definition.delta_fn == OTHER_MINUS_MAIN:
+        return f"{comparison_pivot} - {stats.main_pivot}"
+    if definition.delta_fn == MIDPOINT_DEVIATION:
+        return f"{comparison_pivot} deviation - {stats.main_pivot} deviation"
+    raise ValueError(f"Unsupported measurement delta function '{definition.delta_fn}'.")
 
 
 def _comparison_class(value: object) -> str:

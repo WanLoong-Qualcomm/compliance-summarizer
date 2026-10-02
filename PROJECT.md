@@ -181,8 +181,8 @@ The runtime definitions loaded from `configs/test_definition.json` define the
 compliance margin statistic, comparison statistic preference, signed delta
 function, and acceptable variation for each measurement.
 
-`delta_fn` is one of the exact string constants `"this - other"`,
-`"other - this"`, or `"midpoint deviation"`. The latter uses the row's LL/UL
+`delta_fn` is one of the exact string constants `"main - other"`,
+`"other - main"`, or `"midpoint deviation"`. The latter uses the row's LL/UL
 midpoint. The application dispatches these constants directly; it does not
 parse or execute arbitrary expressions. Tolerances are defined in the same
 measurement-definition file rather than in `JUI.json`.
@@ -313,6 +313,9 @@ section contains:
 3. main-pivot comparisons;
 4. overall top-20 failures; and
 5. overall top-5 marginal passes.
+
+The worst valid `wcMargin` is rendered green when non-negative and red when
+negative.
 
 Grouped sections follow the overall section when grouping is enabled. A single
 methodology-and-assumptions section appears at the end.

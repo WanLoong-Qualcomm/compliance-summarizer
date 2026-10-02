@@ -91,7 +91,7 @@ definition contains a `delta_fn` and its finite, non-negative
 }
 ```
 
-`delta_fn` accepts only `"this - other"`, `"other - this"`, or
+`delta_fn` accepts only `"main - other"`, `"other - main"`, or
 `"midpoint deviation"`. The latter uses the row's LL/UL midpoint and the same
 signed comparison convention. There is no expression parser or arbitrary code
 execution. Tolerances are defined alongside their measurements in this file,
@@ -221,6 +221,9 @@ The standalone HTML report contains no external assets or charts. It includes:
 - an overall top-5 main-pivot marginal-pass table;
 - grouped analysis sections when `group_by` is non-empty; and
 - methodology and assumptions.
+
+In pivot compliance tables, the worst `wcMargin` is highlighted red for a
+failure and green when it is a valid pass.
 
 The ranked tables retain worksheet row, discovered metadata, source pivot
 fields, derived `FAIL type` columns when enabled, `Result?`, limits, and signed

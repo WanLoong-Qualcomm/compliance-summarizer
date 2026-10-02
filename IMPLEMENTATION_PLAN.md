@@ -63,7 +63,7 @@ The definitions in `configs/test_definition.json`, loaded by
 
 The JSON file is the source of truth for signed comparison functions and
 measurement-specific tolerances. `delta_fn` is one of the exact constants
-`"this - other"`, `"other - this"`, or `"midpoint deviation"`; the application
+`"main - other"`, `"other - main"`, or `"midpoint deviation"`; the application
 dispatches these values directly without an expression parser.
 
 The calculator implements:
