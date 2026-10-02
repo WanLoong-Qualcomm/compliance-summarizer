@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from pathlib import Path
 
-from .config import load_custom_groups, load_settings, load_test_filters
+from .config import load_custom_groups, load_settings
 from .grouping import calculate_grouped_analyses
 from .measurements import get_measurement_definition
 from .models import AnalysisResult, MeasurementAnalysis
@@ -16,13 +16,11 @@ from .workbook import load_measurements
 
 def analyze(settings_path: str | Path = "JUI.json") -> AnalysisResult:
     settings = load_settings(settings_path)
-    test_filters = load_test_filters(settings_path)
     custom_groups = load_custom_groups(settings_path) if settings.group_by else {}
     parsed_measurements = load_measurements(
         settings.excel_file_path,
         settings.compliance_sheet_name,
         settings.testnames,
-        test_filters=test_filters,
         add_fail_type=settings.add_fail_type,
     )
     measurement_analyses = []
@@ -73,10 +71,26 @@ def analyze(settings_path: str | Path = "JUI.json") -> AnalysisResult:
 
 def run(
     settings_path: str | Path = "JUI.json",
-    output_path: str | Path = "compliance-summary.html",
+    output_path: str | Path | None = None,
     *,
     overwrite: bool = False,
 ) -> tuple[AnalysisResult, Path]:
     analysis = analyze(settings_path)
-    written = write_html_report(analysis, output_path, overwrite=overwrite)
+    target = (
+        Path(output_path)
+        if output_path is not None
+        else _timestamped_output_path(analysis.settings.outputs_directory)
+    )
+    written = write_html_report(analysis, target, overwrite=overwrite)
     return analysis, written
+
+
+def _timestamped_output_path(outputs_directory: Path) -> Path:
+    timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
+    base = outputs_directory / f"compliance-summary_{timestamp}"
+    candidate = base.with_suffix(".html")
+    suffix = 1
+    while candidate.exists():
+        candidate = base.with_name(f"{base.name}_{suffix}").with_suffix(".html")
+        suffix += 1
+    return candidate

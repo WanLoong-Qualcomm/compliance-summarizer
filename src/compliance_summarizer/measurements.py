@@ -33,6 +33,7 @@ class MeasurementDefinition:
     comparison_statistics: tuple[str, ...]
     acceptable_variation: float
     delta_fn: DeltaFunction
+    filters: tuple[tuple[str, tuple[object, ...]], ...] = ()
 
     def delta(self, anchor_value: float, comparison_value: float) -> float:
         """Return the configured signed anchor/comparison delta."""
@@ -93,6 +94,15 @@ def _finite_number(value: object) -> float | None:
     except (TypeError, ValueError):
         return None
     return number if isfinite(number) else None
+
+
+def _canonical_filter_field(value: object) -> str:
+    if not isinstance(value, str):
+        return ""
+    text = " ".join(value.strip().split())
+    if text.upper() == "RESULT?":
+        return "Result?"
+    return text.upper()
 
 
 def _load_measurements() -> dict[str, MeasurementDefinition]:
@@ -168,6 +178,32 @@ def _load_measurements() -> dict[str, MeasurementDefinition]:
                 f"Measurement definition '{name}' has invalid statistic fields."
             )
 
+        raw_filters = raw_definition.get("filters", {})
+        if not isinstance(raw_filters, dict):
+            raise RuntimeError(
+                f"Measurement definition '{name}' filters must be a JSON object."
+            )
+        filters: list[tuple[str, tuple[object, ...]]] = []
+        seen_filter_fields: set[str] = set()
+        for raw_field, raw_values in raw_filters.items():
+            field = _canonical_filter_field(raw_field)
+            if not field:
+                raise RuntimeError(
+                    f"Measurement definition '{name}' contains a blank filter field."
+                )
+            if field in seen_filter_fields:
+                raise RuntimeError(
+                    f"Measurement definition '{name}' contains duplicate filter "
+                    f"field '{field}'."
+                )
+            if type(raw_values) is not list or not raw_values:
+                raise RuntimeError(
+                    f"Measurement definition '{name}.{field}' filter values must "
+                    "be a non-empty list."
+                )
+            seen_filter_fields.add(field)
+            filters.append((field, tuple(raw_values)))
+
         definitions[name] = MeasurementDefinition(
             name=name,
             margin_statistic=margin_statistic.strip(),
@@ -176,6 +212,7 @@ def _load_measurements() -> dict[str, MeasurementDefinition]:
             ),
             acceptable_variation=float(acceptable_variation),
             delta_fn=delta_fn,
+            filters=tuple(filters),
         )
     return definitions
 

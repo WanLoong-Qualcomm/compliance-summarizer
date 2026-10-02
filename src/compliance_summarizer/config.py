@@ -19,6 +19,7 @@ from .workbook import (
 
 DEFAULT_SETTINGS: dict[str, object] = {
     "excel_file_path": "./REFERENCE.xlsm",
+    "outputs_directory": "",
     "compliance_sheet_name": "Combined",
     "block": "SIGPATH",
     "testnames": ["GAIN"],
@@ -31,63 +32,17 @@ DEFAULT_SETTINGS: dict[str, object] = {
     "bypass_model": True,
 }
 OPTIONAL_SETTINGS = frozenset(
-    {"add_fail_type", "include_group_failures", "include_group_marginal_passes"}
+    {
+        "outputs_directory",
+        "add_fail_type",
+        "include_group_failures",
+        "include_group_marginal_passes",
+    }
 )
 
 
 def default_settings() -> dict[str, object]:
     return deepcopy(DEFAULT_SETTINGS)
-
-
-def load_test_filters(
-    settings_path: str | Path,
-) -> dict[str, dict[str, tuple[object, ...]]]:
-    """Load optional per-testname row filters beside the settings file."""
-
-    filter_path = Path(settings_path).resolve().parent / "configs" / "test_filters.json"
-    if not filter_path.is_file():
-        return {}
-    try:
-        payload = json.loads(filter_path.read_text(encoding="utf-8"))
-    except JSONDecodeError as error:
-        raise ConfigurationError(
-            f"Invalid JSON in '{filter_path}' at line {error.lineno}, "
-            f"column {error.colno}: {error.msg}."
-        ) from error
-    except OSError as error:
-        raise ConfigurationError(
-            f"Could not read test filter file '{filter_path}': {error}."
-        ) from error
-
-    if not isinstance(payload, dict):
-        raise ConfigurationError("The test filter root must be a JSON object.")
-
-    filters: dict[str, dict[str, tuple[object, ...]]] = {}
-    for raw_measurement, raw_rules in payload.items():
-        measurement = _nonempty_string(raw_measurement, "test filter testname").upper()
-        if measurement not in MEASUREMENTS:
-            raise ConfigurationError(
-                f"Unsupported test filter testname '{raw_measurement}'. Supported "
-                f"values: {', '.join(MEASUREMENTS)}."
-            )
-        if not isinstance(raw_rules, dict):
-            raise ConfigurationError(
-                f"Test filter '{measurement}' must contain a JSON object of fields."
-            )
-        normalized_rules: dict[str, tuple[object, ...]] = {}
-        for raw_field, raw_values in raw_rules.items():
-            field = canonical_metadata_header(raw_field)
-            if not field:
-                raise ConfigurationError(
-                    f"Test filter '{measurement}' contains a blank field name."
-                )
-            if type(raw_values) is not list or not raw_values:
-                raise ConfigurationError(
-                    f"Test filter '{measurement}.{field}' must be a non-empty list."
-                )
-            normalized_rules[field] = tuple(raw_values)
-        filters[measurement] = normalized_rules
-    return filters
 
 
 def load_custom_groups(
@@ -243,6 +198,20 @@ def load_settings(path: str | Path = "JUI.json") -> Settings:
             f"Configured workbook does not exist: '{workbook_path}'."
         )
 
+    outputs_text = payload.get(
+        "outputs_directory",
+        DEFAULT_SETTINGS["outputs_directory"],
+    )
+    if not isinstance(outputs_text, str):
+        raise ConfigurationError("'outputs_directory' must be a string.")
+    if outputs_text.strip():
+        outputs_directory = Path(outputs_text.strip())
+        if not outputs_directory.is_absolute():
+            outputs_directory = settings_path.resolve().parent / outputs_directory
+        outputs_directory = outputs_directory.resolve()
+    else:
+        outputs_directory = (settings_path.resolve().parent / "outputs").resolve()
+
     sheet = _nonempty_string(payload["compliance_sheet_name"], "compliance_sheet_name")
     block = _nonempty_string(payload["block"], "block").upper()
     if block != "SIGPATH":
@@ -334,6 +303,7 @@ def load_settings(path: str | Path = "JUI.json") -> Settings:
 
     return Settings(
         excel_file_path=workbook_path,
+        outputs_directory=outputs_directory,
         compliance_sheet_name=sheet,
         block=block,
         testnames=normalized_measurements_tuple,

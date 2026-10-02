@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 
-from compliance_summarizer.app import analyze
+from compliance_summarizer.app import analyze, run
 from compliance_summarizer.cli import main
 from compliance_summarizer.report import render_html
 
@@ -314,6 +314,30 @@ def test_cli_runs_end_to_end(tmp_path, workbook_factory, sample_rows, capsys):
     assert output.is_file()
     assert "Processed 3 GAIN row(s)" in captured.out
     assert "AI generation: bypassed" in captured.out
+
+
+def test_default_run_writes_timestamped_report_to_outputs_directory(
+    tmp_path, workbook_factory, sample_rows
+):
+    workbook = workbook_factory(sample_rows)
+    settings = write_settings(
+        tmp_path / "JUI.json",
+        workbook,
+        outputs_directory="generated-reports",
+    )
+
+    _, first = run(settings)
+    _, second = run(settings)
+
+    assert first.parent == (tmp_path / "generated-reports").resolve()
+    assert second.parent == first.parent
+    assert first != second
+    assert re.fullmatch(
+        r"compliance-summary_\d{8}_\d{6}(?:_\d+)?\.html",
+        first.name,
+    )
+    assert first.is_file()
+    assert second.is_file()
 
 
 def test_cli_reports_actionable_failure(tmp_path, capsys):

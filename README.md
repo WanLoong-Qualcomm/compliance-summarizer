@@ -37,8 +37,9 @@ Edit `JUI.json`, especially `excel_file_path` and `anchor_pivot`, then run:
 uv run compliance-summarizer
 ```
 
-The default output is `compliance-summary.html`. To select a different path or
-replace an existing report:
+By default, the report is written to `outputs` beside `JUI.json` with a
+timestamped name such as `compliance-summary_20261002_143015.html`. To select
+an exact path or replace an existing report:
 
 ```powershell
 uv run compliance-summarizer --settings .\JUI.json `
@@ -52,6 +53,7 @@ also accepted. The supported fields are:
 | Field | Behavior |
 | --- | --- |
 | `excel_file_path` | Existing `.xlsx` or `.xlsm` workbook. |
+| `outputs_directory` | Directory for timestamped default reports. Relative paths are resolved beside the settings file; blank uses `outputs`. |
 | `compliance_sheet_name` | Worksheet containing the SIGPATH compliance table. |
 | `block` | Must be `SIGPATH`. |
 | `testnames` | Non-empty list selected from `GAIN`, `GAIN-DNL`, `GCIB`, `GCTX`, `IP2ACS`, `IP2IB`, `IP3ACS`, `IP3IB`, `IP3TB`, `S11-LOW`, `S11-MID`, `S11-HIGH`, `SSNFWSPURREMOVAL`, `SSNF-FIRSTRBWSPURREMOVAL`, and `SSNF-LASTRBWSPURREMOVAL`. |
@@ -63,30 +65,22 @@ also accepted. The supported fields are:
 | `include_group_marginal_passes` | Boolean. When `true`, each valid group includes its top-5 marginal-pass table. Defaults to `false`. |
 | `bypass_model` | Must be `true` in version 0.2.0. |
 
-Optional per-measurement row filters are loaded from
-`configs/test_filters.json` under the settings file's directory. Every field
-in a measurement's filter must match for a row to be included. String matches
-are trimmed and case-insensitive; non-string values use normal equality.
-
-For example:
-
-```json
-{
-  "IP2ACS": {"CHANNEL": ["IQ"]}
-}
-```
-
-Excluded rows are reported as a coverage note.
-
 Measurement definitions are loaded from `configs/test_definition.json`. Each
 definition contains a `delta_fn` and its finite, non-negative
-`acceptable_variation`:
+`acceptable_variation`; it may also define per-measurement row filters. Every
+configured filter field must match for a row to be included. String matches
+are trimmed and case-insensitive; non-string values use normal equality.
 
 ```json
 {
   "GAIN-DNL": {
     "delta_fn": "midpoint deviation",
     "acceptable_variation": 0.2
+  },
+  "IP2ACS": {
+    "delta_fn": "anchor - other",
+    "acceptable_variation": 0.2,
+    "filters": {"CHANNEL": ["IQ"]}
   }
 }
 ```
@@ -95,7 +89,7 @@ definition contains a `delta_fn` and its finite, non-negative
 `"midpoint deviation"`. The latter uses the row's LL/UL midpoint and the same
 signed comparison convention. There is no expression parser or arbitrary code
 execution. Tolerances are defined alongside their measurements in this file,
-not in `JUI.json`.
+not in `JUI.json`. Filtered rows are reported as a coverage note.
 
 Named custom grouping schemes are loaded from `configs/groups.json`. Each
 scheme names a source metadata field, maps allowed values to group labels, and

@@ -17,23 +17,38 @@
   },
   "IP2ACS": {
     "delta_fn": "anchor - other",
-    "acceptable_variation": 0.2
+    "acceptable_variation": 0.2,
+    "filters": {
+      "CHANNEL" : ["IQ"]
+    }
   },
   "IP2IB": {
     "delta_fn": "anchor - other",
-    "acceptable_variation": 0.2
+    "acceptable_variation": 0.2,
+    "filters": {
+      "CHANNEL": ["IQ"]
+    }
   },
   "IP3ACS": {
     "delta_fn": "anchor - other",
-    "acceptable_variation": 0.2
+    "acceptable_variation": 0.2,
+    "filters": {
+      "CHANNEL": ["IQ"]
+    }
   },
   "IP3IB": {
     "delta_fn": "anchor - other",
-    "acceptable_variation": 0.2
+    "acceptable_variation": 0.2,
+    "filters": {
+      "CHANNEL": ["IQ"]
+    }
   },
   "IP3TB": {
     "delta_fn": "anchor - other",
-    "acceptable_variation": 0.2
+    "acceptable_variation": 0.2,
+    "filters": {
+      "CHANNEL": ["IQ"]
+    }
   },
   "S11-LOW": {
     "delta_fn": "other - anchor",

@@ -27,8 +27,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--output",
         type=Path,
-        default=Path("compliance-summary.html"),
-        help="HTML report path (default: ./compliance-summary.html)",
+        default=None,
+        help=(
+            "exact HTML report path override (default: timestamped report in "
+            "outputs_directory)"
+        ),
     )
     parser.add_argument(
         "--init-settings",

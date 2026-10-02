@@ -279,9 +279,19 @@ def parse_measurements_rows(
         for measurement in requested_measurements
     }
     filter_rules = {
-        measurement: dict((test_filters or {}).get(measurement, {}))
+        measurement: dict(definitions[measurement].filters)
         for measurement in requested_measurements
     }
+    for measurement, rules in (test_filters or {}).items():
+        normalized_measurement = measurement.strip().upper()
+        if normalized_measurement not in filter_rules:
+            continue
+        filter_rules[normalized_measurement].update(
+            {
+                canonical_metadata_header(field): tuple(values)
+                for field, values in rules.items()
+            }
+        )
     for measurement, rules in filter_rules.items():
         missing_filter_fields = tuple(
             field for field in rules if field not in schema.metadata_columns

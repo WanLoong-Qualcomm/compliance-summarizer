@@ -13,6 +13,7 @@ CALCULATION_ERROR = "ERROR"
 @dataclass(frozen=True, slots=True)
 class Settings:
     excel_file_path: Path
+    outputs_directory: Path
     compliance_sheet_name: str
     block: str
     testnames: tuple[str, ...]

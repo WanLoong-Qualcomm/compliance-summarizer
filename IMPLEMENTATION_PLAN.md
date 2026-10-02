@@ -45,8 +45,8 @@ current scope.
 - Pivots require `wcMargin` and `MEAN` or `NN_25C AVG`.
 - Raw source values and normalized numeric values are stored separately.
 - Selected measurements are loaded in one worksheet scan.
-- Optional filters are loaded from `configs/test_filters.json` beside the
-  settings file.
+- Optional per-measurement filters are loaded from the corresponding entries
+  in `configs/test_definition.json`.
 - Named custom grouping schemes are loaded from `configs/groups.json` beside
   the settings file.
 - Coverage gaps, malformed values, invalid limits, filtered rows, and duplicate
@@ -61,8 +61,8 @@ The definitions in `configs/test_definition.json`, loaded by
 `IP3TB`, `S11-LOW`, `S11-MID`, `S11-HIGH`, `SSNFWSPURREMOVAL`,
 `SSNF-FIRSTRBWSPURREMOVAL`, and `SSNF-LASTRBWSPURREMOVAL`.
 
-The JSON file is the source of truth for signed comparison functions and
-measurement-specific tolerances. `delta_fn` is one of the exact constants
+The JSON file is the source of truth for signed comparison functions,
+measurement-specific tolerances, and optional row filters. `delta_fn` is one of the exact constants
 `"anchor - other"`, `"other - anchor"`, or `"midpoint deviation"`; the application
 dispatches these values directly without an expression parser.
 
@@ -155,9 +155,11 @@ The checked-in `JUI.json` is a local working configuration. It points to
 pivot, selects all supported measurements, and groups by `TEMP`. Its absolute
 path is machine-specific and must be edited elsewhere.
 
-`configs/test_filters.json` and `configs/groups.json` are consumed at runtime
-when the corresponding features are configured. The latter must contain a JSON
-object whose definitions have `field`, `groups`, and `default` properties.
+`configs/groups.json` is consumed at runtime when named grouping schemes are
+configured. It must contain a JSON object whose definitions have `field`,
+`groups`, and `default` properties. Blank `outputs_directory` settings use an
+`outputs` directory beside the JUI file; default reports receive timestamped
+filenames.
 
 ## Verification
 

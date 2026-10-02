@@ -25,5 +25,6 @@
   "group_by": ["TEMP"],
   "include_group_failures": false,
   "include_group_marginal_passes": false,
-  "bypass_model": true
+  "bypass_model": true,
+  "outputs_directory": ""
 }

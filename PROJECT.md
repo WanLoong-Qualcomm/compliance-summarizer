@@ -47,10 +47,12 @@ The application must:
 The implementation is staged across the following modules:
 
 1. `config.py` loads and strictly validates `JUI.json`. It resolves relative
-   workbook paths against the settings file and enforces the current SIGPATH,
-   supported-measurement, grouping, and model-bypass contract.
-2. `config.py` optionally loads `configs/test_filters.json` and named custom
-   grouping schemes from `configs/groups.json` in the settings-file directory.
+   workbook and output-directory paths against the settings file and enforces
+   the current SIGPATH, supported-measurement, grouping, and model-bypass
+   contract.
+2. Measurement definitions provide signed comparison rules, tolerances, and
+   optional per-measurement filters; `config.py` loads named custom grouping
+   schemes from `configs/groups.json` in the settings-file directory.
 3. `workbook.py` opens the configured worksheet read-only, discovers the row
    2–4 schema, and scans the data once for all selected measurements.
 4. The workbook layer creates normalized `ComplianceCase` objects, preserving
@@ -102,6 +104,8 @@ application does not save or modify the workbook and does not execute macros.
 `JUI.json` supports exactly these fields:
 
 - `excel_file_path`: existing `.xlsx` or `.xlsm` path;
+- `outputs_directory`: directory for timestamped default reports; relative
+  paths are resolved beside the settings file, and blank uses `outputs`;
 - `compliance_sheet_name`: worksheet name;
 - `block`: currently required to be `SIGPATH`;
 - `testnames`: one or more unique supported measurements;
@@ -134,12 +138,16 @@ invalid definition tolerances, and invalid paths are rejected before analysis.
 
 ### 5.1 Optional row filters
 
-The application reads only `configs/test_filters.json` beside the settings
-file. Its structure maps a measurement to metadata fields and allowed values:
+Measurement-specific filters are defined inside the corresponding entry in
+`configs/test_definition.json`:
 
 ```json
 {
-  "IP2ACS": {"CHANNEL": ["IQ"]}
+  "IP2ACS": {
+    "delta_fn": "anchor - other",
+    "acceptable_variation": 0.2,
+    "filters": {"CHANNEL": ["IQ"]}
+  }
 }
 ```
 
@@ -325,8 +333,9 @@ formatting.
 Grouped sections follow the overall section when grouping is enabled. A single
 methodology-and-assumptions section appears at the end.
 
-All user/workbook text is HTML-escaped. The report is written atomically. An
-existing output is rejected unless `--overwrite` is supplied.
+All user/workbook text is HTML-escaped. Default reports are written atomically
+to the configured output directory with timestamped names. An explicitly
+selected output path is rejected if it exists unless `--overwrite` is supplied.
 
 The CLI supports:
 

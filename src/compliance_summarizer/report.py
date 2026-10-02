@@ -219,6 +219,7 @@ def _configuration_table(analysis: AnalysisResult) -> str:
     settings = analysis.settings
     rows = (
         ("Workbook", settings.excel_file_path),
+        ("Outputs directory", settings.outputs_directory),
         ("Sheet", settings.compliance_sheet_name),
         ("Block", settings.block),
         ("Testnames", ", ".join(settings.testnames)),

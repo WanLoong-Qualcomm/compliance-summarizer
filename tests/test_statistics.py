@@ -129,6 +129,11 @@ def test_measurement_comparison_direction(
     row = {
         **sample_rows[0],
         "TESTNAME": measurement,
+        "CHANNEL": (
+            "IQ"
+            if measurement in {"IP2ACS", "IP2IB", "IP3ACS", "IP3IB"}
+            else sample_rows[0]["CHANNEL"]
+        ),
         "DUT-1_VAR1": {
             **sample_rows[0]["DUT-1_VAR1"],
             "NN_25c AVG": main_value,

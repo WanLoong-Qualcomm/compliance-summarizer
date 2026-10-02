@@ -23,10 +23,26 @@ def test_load_settings_resolves_workbook_relative_to_settings(
     settings = load_settings(path)
 
     assert settings.excel_file_path == workbook.resolve()
+    assert settings.outputs_directory == (tmp_path / "outputs").resolve()
     assert settings.testnames == ("GAIN",)
     assert settings.add_fail_type is False
     assert settings.include_group_failures is False
     assert settings.include_group_marginal_passes is False
+
+
+def test_load_settings_resolves_custom_outputs_directory(
+    tmp_path, workbook_factory, sample_rows
+):
+    workbook = workbook_factory(sample_rows)
+    path = write_settings(
+        tmp_path / "JUI.json",
+        workbook,
+        outputs_directory="generated-reports",
+    )
+
+    settings = load_settings(path)
+
+    assert settings.outputs_directory == (tmp_path / "generated-reports").resolve()
 
 
 @pytest.mark.parametrize(
@@ -34,6 +50,7 @@ def test_load_settings_resolves_workbook_relative_to_settings(
     [
         ({"block": "OTHER"}, "SIGPATH"),
         ({"testnames": []}, "testnames.*GAIN"),
+        ({"outputs_directory": 42}, "outputs_directory.*string"),
         ({"acceptable_variation": {"GAIN": 0.2}}, "Unsupported.*acceptable_variation"),
         ({"group_by": ["Result?"]}, "Unsupported.*group_by"),
         ({"add_fail_type": "yes"}, "add_fail_type.*boolean"),
